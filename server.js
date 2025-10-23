@@ -12,7 +12,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ✅ Add this route to confirm backend readiness
 app.get("/", (req, res) => {
   res.status(200).send("FCA Assistant backend is running.");
 });
@@ -33,5 +32,6 @@ app.post("/chat", async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`✅ Server running on port ${port}`));
+
 
 
