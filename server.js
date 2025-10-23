@@ -51,45 +51,46 @@ async function searchFCAWebsite(query) {
   const maxPages = 25; // safety limit
 
   async function fetchPage(url) {
-    try {
-      const res = await axios.get(url);
-      const $ = cheerio.load(res.data);
-      const text = $("body").text().replace(/\s+/g, " ");
-      const lower = text.toLowerCase();
+  try {
+    const res = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      timeout: 10000,
+    });
+    const $ = cheerio.load(res.data);
+    const text = $("body").text().replace(/\s+/g, " ");
+    const lower = text.toLowerCase();
 
-      // ✅ Check this page for the query
-      if (lower.includes(q)) {
-        const start = lower.indexOf(q);
-        const snippet = text.substring(Math.max(0, start - 120), start + 400);
-        return { found: true, snippet: snippet.trim(), url };
-      }
-
-      // 🕸️ Collect links to other internal FCA pages
-      $("a[href]").each((_, el) => {
-        const href = $(el).attr("href");
-        if (!href) return;
-
-        // convert relative links to absolute URLs
-        let nextUrl;
-        if (href.startsWith("/")) nextUrl = baseUrl + href;
-        else if (href.startsWith(baseUrl)) nextUrl = href;
-        else return; // skip external links
-
-        // avoid duplicates & pdfs & mailto
-        if (
-          !visited.has(nextUrl) &&
-          !nextUrl.endsWith(".pdf") &&
-          !nextUrl.includes("mailto")
-        ) {
-          toVisit.push(nextUrl);
-        }
-      });
-      return { found: false };
-    } catch (err) {
-      console.warn(`⚠️ Error fetching ${url}: ${err.message}`);
-      return { found: false };
+    if (lower.includes(q)) {
+      const start = lower.indexOf(q);
+      const snippet = text.substring(Math.max(0, start - 120), start + 400);
+      return { found: true, snippet: snippet.trim(), url };
     }
+
+    $("a[href]").each((_, el) => {
+      const href = $(el).attr("href");
+      if (!href) return;
+      let nextUrl;
+      if (href.startsWith("/")) nextUrl = baseUrl + href;
+      else if (href.startsWith(baseUrl)) nextUrl = href;
+      else return;
+      if (
+        !visited.has(nextUrl) &&
+        !nextUrl.endsWith(".pdf") &&
+        !nextUrl.includes("mailto")
+      ) {
+        toVisit.push(nextUrl);
+      }
+    });
+    return { found: false };
+  } catch (err) {
+    console.warn(`⚠️ Error fetching ${url}: ${err.message}`);
+    return { found: false };
   }
+}
 
   while (toVisit.length && visited.size < maxPages) {
     const url = toVisit.shift();
@@ -149,5 +150,6 @@ app.post("/chat", async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`✅ FCA Assistant running on port ${port}`));
+
 
 
