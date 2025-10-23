@@ -42,22 +42,66 @@ async function loadPDFs() {
 await loadPDFs();
 
 // 🌐 Helper: Search FCA website if needed
+// 🌐 Smart crawler: Automatically discovers and searches all FCA pages
 async function searchFCAWebsite(query) {
-  try {
-    const res = await axios.get("https://www.faithchristianacademy.net");
-    const $ = cheerio.load(res.data);
-    const text = $("body").text().replace(/\s+/g, " ");
-    const lower = text.toLowerCase();
-    const q = query.toLowerCase();
+  const baseUrl = "https://www.faithchristianacademy.net";
+  const visited = new Set();
+  const toVisit = [baseUrl];
+  const q = query.toLowerCase();
+  const maxPages = 25; // safety limit
 
-    if (lower.includes(q)) {
-      const start = lower.indexOf(q);
-      const snippet = text.substring(Math.max(0, start - 120), start + 300);
-      return `🌐 Found on the official FCA website:\n\n${snippet.trim()}`;
+  async function fetchPage(url) {
+    try {
+      const res = await axios.get(url);
+      const $ = cheerio.load(res.data);
+      const text = $("body").text().replace(/\s+/g, " ");
+      const lower = text.toLowerCase();
+
+      // ✅ Check this page for the query
+      if (lower.includes(q)) {
+        const start = lower.indexOf(q);
+        const snippet = text.substring(Math.max(0, start - 120), start + 400);
+        return { found: true, snippet: snippet.trim(), url };
+      }
+
+      // 🕸️ Collect links to other internal FCA pages
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href");
+        if (!href) return;
+
+        // convert relative links to absolute URLs
+        let nextUrl;
+        if (href.startsWith("/")) nextUrl = baseUrl + href;
+        else if (href.startsWith(baseUrl)) nextUrl = href;
+        else return; // skip external links
+
+        // avoid duplicates & pdfs & mailto
+        if (
+          !visited.has(nextUrl) &&
+          !nextUrl.endsWith(".pdf") &&
+          !nextUrl.includes("mailto")
+        ) {
+          toVisit.push(nextUrl);
+        }
+      });
+      return { found: false };
+    } catch (err) {
+      console.warn(`⚠️ Error fetching ${url}: ${err.message}`);
+      return { found: false };
     }
-  } catch (err) {
-    console.error("Website search error:", err.message);
   }
+
+  while (toVisit.length && visited.size < maxPages) {
+    const url = toVisit.shift();
+    if (!url || visited.has(url)) continue;
+    visited.add(url);
+
+    const result = await fetchPage(url);
+    if (result.found) {
+      return `🌐 Found on the FCA site (${result.url}):\n\n${result.snippet}`;
+    }
+  }
+
   return null;
 }
 
@@ -105,4 +149,5 @@ app.post("/chat", async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`✅ FCA Assistant running on port ${port}`));
+
 
