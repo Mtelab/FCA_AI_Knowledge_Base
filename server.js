@@ -16,7 +16,7 @@ app.post("/chat", async (req, res) => {
   try {
     const messages = req.body.messages || [];
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-4o-mini",
       messages,
     });
     res.json({ reply: completion.choices[0].message });
@@ -28,3 +28,4 @@ app.post("/chat", async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`✅ Server running on port ${port}`));
+
