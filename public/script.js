@@ -1,79 +1,83 @@
-import express from "express";
-import dotenv from "dotenv";
-import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
-import pdfParse from "pdf-parse";  // 👈 Add this
-import { fileURLToPath } from "url";
+const chatBox = document.getElementById("chat-box");
+const userInput = document.getElementById("user-input");
+const sendBtn = document.getElementById("send-btn");
 
-// Show branded loading message until backend responds
-window.addEventListener("load", async () => {
+let conversation = [
+  {
+    role: "system",
+    content:
+      "You are FCA Assistant, an AI that answers questions about Faith Christian Academy."
+  }
+];
+
+// 🧠 Add a message to the chat window
+function addMessage(content, sender) {
+  const msg = document.createElement("div");
+  msg.classList.add("message", sender);
+  msg.textContent = content;
+  chatBox.appendChild(msg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// 🚀 Check if backend is awake, then hide the loading screen
+async function checkBackendStatus() {
   const loadingEl = document.getElementById("loading");
+
+  // After 15 seconds, if still loading, show an alternate message
+  const timeout = setTimeout(() => {
+    if (loadingEl.style.display !== "none") {
+      loadingEl.textContent = "⏳ FCA Assistant is still waking up, please wait...";
+    }
+  }, 15000);
+
   try {
     const res = await fetch("/");
     if (res.ok) {
-      loadingEl.style.display = "none"; // Hide when server is ready
+      clearTimeout(timeout);
+      loadingEl.style.display = "none";
+    } else {
+      console.warn("Backend not ready yet...");
     }
-  } catch {
-    // If still waking up, keep showing "Starting FCA Assistant..."
-    console.log("Backend still starting up...");
-  }
-});
-
-dotenv.config();
-const app = express();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
-
-// 🧠 Load FCA Knowledge Base PDFs automatically
-const dataDir = path.join(__dirname, "data");
-let fcaKnowledge = "";
-
-async function loadPDFs() {
-  try {
-    const files = fs.readdirSync(dataDir);
-    for (const file of files) {
-      if (file.toLowerCase().endsWith(".pdf")) {
-        const dataBuffer = fs.readFileSync(path.join(dataDir, file));
-        const pdfData = await pdfParse(dataBuffer);
-        fcaKnowledge += `\n--- ${file} ---\n${pdfData.text}\n`;
-      }
-    }
-    console.log(`✅ Loaded ${files.length} FCA PDF files.`);
   } catch (err) {
-    console.error("⚠️ Error loading PDF files:", err);
+    console.warn("Backend unreachable:", err);
   }
 }
 
-// Load PDFs at startup
-await loadPDFs();
+// 📨 Send message to backend
+async function sendMessage() {
+  const text = userInput.value.trim();
+  if (!text) return;
 
-// 💬 Chat endpoint
-app.post("/chat", async (req, res) => {
+  addMessage(text, "user");
+  conversation.push({ role: "user", content: text });
+  userInput.value = "";
+
   try {
-    const userMessages = req.body.messages || [];
-    const systemPrompt = {
-      role: "system",
-      content:
-        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents:\n" +
-        fcaKnowledge +
-        "\nIf the question is not answered by these materials, respond that the user should refer to the official Faith Christian Academy website (faithchristianacademy.net)."
-    };
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [systemPrompt, ...userMessages],
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: conversation })
     });
 
-    res.json({ reply: completion.choices[0].message });
+    if (!res.ok) throw new Error("Network response was not ok");
+    const data = await res.json();
+    const reply = data.reply?.content || "Sorry, I couldn’t get a response.";
+    addMessage(reply, "bot");
+    conversation.push({ role: "assistant", content: reply });
   } catch (err) {
-    console.error("❌ Error:", err);
-    res.status(500).json({ error: "Error communicating with OpenAI API." });
+    console.error("Error sending message:", err);
+    addMessage(
+      "⚠️ The FCA Assistant is still starting up. Please wait a moment and try again.",
+      "bot"
+    );
   }
+}
+
+// 🎯 Event listeners
+sendBtn.onclick = sendMessage;
+userInput.addEventListener("keypress", e => {
+  if (e.key === "Enter") sendMessage();
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`✅ FCA Assistant running on port ${port}`));
+// 🔄 Run check on page load
+window.addEventListener("load", checkBackendStatus);
