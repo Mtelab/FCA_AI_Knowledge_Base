@@ -6,6 +6,11 @@ let conversation = [
   { role: "system", content: "You are FCA Assistant, an AI that answers questions about Faith Christian Academy." }
 ];
 
+window.addEventListener("load", async () => {
+  const res = await fetch("/");
+  if (res.ok) document.getElementById("loading").style.display = "none";
+});
+
 function addMessage(content, sender) {
   const msg = document.createElement("div");
   msg.classList.add("message", sender);
@@ -41,3 +46,4 @@ sendBtn.onclick = sendMessage;
 userInput.addEventListener("keypress", e => {
   if (e.key === "Enter") sendMessage();
 });
+
