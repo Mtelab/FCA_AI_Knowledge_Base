@@ -1,6 +1,7 @@
 {
   "name": "fca-ai-knowledge-base",
   "version": "1.0.0",
+  "type": "module",
   "description": "Faith Christian Academy AI Knowledge Base (Glitch-ready)",
   "main": "server.js",
   "scripts": {
@@ -13,4 +14,5 @@
     "pdf-parse": "^1.1.1"
   }
 }
+
 
