@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 // 🧠 Load FCA Knowledge Base PDFs automatically
-const dataDir = path.join(__dirname, "data");
+const dataDir = path.resolve("./data");
 let fcaKnowledge = "";
 
 async function loadPDFs() {
@@ -71,4 +71,5 @@ app.post("/chat", async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`✅ FCA Assistant running on port ${port}`));
+
 
