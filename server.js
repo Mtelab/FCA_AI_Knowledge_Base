@@ -41,23 +41,54 @@ async function loadPDFs() {
 }
 
 // 📅 Load all Google Calendars (from .ics URLs)
+import ical from "node-ical"; // make sure this is imported at the top
+
 async function loadAllCalendars() {
-  try {
-    calendarText = "";
-    for (const url of calendarURLs) {
+  calendarText = "";
+  const now = new Date(); // current time
+  const oneYearAhead = new Date();
+  oneYearAhead.setFullYear(now.getFullYear() + 1); // optional: limit to next 12 months
+
+  for (const url of calendarURLs) {
+    try {
       console.log(`🔄 Fetching calendar: ${url}`);
       const data = await ical.async.fromURL(url);
-      const events = Object.values(data).filter((e) => e.type === "VEVENT");
+      const events = Object.values(data).filter(
+        (e) =>
+          e.type === "VEVENT" &&
+          e.start instanceof Date &&
+          e.start >= now && // ✅ only future events
+          e.start <= oneYearAhead // optional upper bound
+      );
+
       for (const event of events) {
-        calendarText += `\nEvent: ${event.summary}\nDate: ${event.start}\nDescription: ${
+        const start = event.start.toLocaleString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const end = event.end
+          ? event.end.toLocaleString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "";
+        calendarText += `\n📅 Event: ${event.summary}\n🕒 Date: ${start}${
+          end ? " - " + end : ""
+        }\n📍 Location: ${event.location || "TBA"}\n📝 Description: ${
           event.description || ""
-        }\nLocation: ${event.location || ""}\n---\n`;
+        }\n---\n`;
       }
+    } catch (err) {
+      console.warn(`⚠️ Error loading calendar ${url}: ${err.message}`);
     }
-    console.log(`✅ Loaded ${calendarURLs.length} calendar(s) with combined events.`);
-  } catch (err) {
-    console.error("⚠️ Error loading calendars:", err);
   }
+
+  console.log(
+    `✅ Loaded ${calendarURLs.length} calendar(s) with upcoming events only.`
+  );
 }
 
 // 🚀 Initial load of PDFs
@@ -109,6 +140,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
