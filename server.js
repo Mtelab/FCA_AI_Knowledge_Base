@@ -94,7 +94,7 @@ app.post("/chat", async (req, res) => {
     };
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       messages: [systemPrompt, ...userMessages],
     });
 
@@ -109,6 +109,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
