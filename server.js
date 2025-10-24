@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
-import puppeteer from "puppeteer"; // ✅ NEW
+import puppeteer from "puppeteer"; // ✅ Puppeteer
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 
@@ -46,16 +46,20 @@ async function searchFCAWebsite(query) {
   const visited = new Set();
   const toVisit = [baseUrl];
   const q = query.toLowerCase();
-  const maxPages = 40; // crawl limit
+  const maxPages = 40;
   const matchPattern = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+  const chromePath = puppeteer.executablePath(); // ✅ use built-in Chromium
 
   async function fetchPage(url) {
     let browser;
     try {
       browser = await puppeteer.launch({
         headless: "new",
+        executablePath: chromePath,
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
+
       const page = await browser.newPage();
       await page.setUserAgent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
@@ -74,7 +78,6 @@ async function searchFCAWebsite(query) {
         return { found: true, snippet: snippet.trim(), url };
       }
 
-      // 🕸️ Gather more internal links
       const links = await page.$$eval("a[href]", (as) =>
         as
           .map((a) => a.href)
@@ -133,7 +136,6 @@ app.post("/chat", async (req, res) => {
         "\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
     };
 
-    // Step 1️⃣: Ask OpenAI to search documents
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [systemPrompt, ...userMessages],
@@ -141,7 +143,6 @@ app.post("/chat", async (req, res) => {
 
     let reply = completion.choices[0].message.content.trim();
 
-    // Step 2️⃣: If model signals to use website search, trigger Puppeteer
     if (reply.includes("[NEEDS_WEBSITE_SEARCH]")) {
       const webResult = await searchFCAWebsite(lastUserMessage);
       reply =
@@ -160,4 +161,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
-
