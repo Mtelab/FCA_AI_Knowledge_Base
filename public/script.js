@@ -126,6 +126,14 @@ async function sendMessage() {
       body: JSON.stringify({ messages: conversation })
     });
 
+        const text = userInput.value.trim();
+    if (!text) return;
+    
+    // 🦅 Trigger animation when user says "go falcons"
+    if (text.toLowerCase().includes("go falcons")) {
+      triggerFalconShow();
+    }
+
     if (!res.ok) throw new Error("Network response was not ok");
     const data = await res.json();
     const reply = data.reply?.content || "Sorry, I couldn’t get a response.";
@@ -159,6 +167,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
