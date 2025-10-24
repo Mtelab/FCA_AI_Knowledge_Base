@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
-import ical from "node-ical"; // ✅ for reading .ics files
+import ical from "node-ical";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
@@ -17,12 +17,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// 🧠 Load FCA Knowledge Base PDFs automatically
+// 🧠 FCA Knowledge (PDFs + Calendar)
 const dataDir = path.resolve("./data");
 let fcaKnowledge = "";
 let calendarURLs = [];
 let calendarText = "";
 
+// 📘 Load PDFs from /data
 async function loadPDFs() {
   try {
     const files = fs.readdirSync(dataDir);
@@ -39,7 +40,7 @@ async function loadPDFs() {
   }
 }
 
-// 🗓️ Combine multiple Google Calendars
+// 📅 Load all Google Calendars (from .ics URLs)
 async function loadAllCalendars() {
   try {
     calendarText = "";
@@ -53,22 +54,22 @@ async function loadAllCalendars() {
         }\nLocation: ${event.location || ""}\n---\n`;
       }
     }
-    console.log(`✅ Loaded ${calendarURLs.length} calendars with combined events.`);
+    console.log(`✅ Loaded ${calendarURLs.length} calendar(s) with combined events.`);
   } catch (err) {
     console.error("⚠️ Error loading calendars:", err);
   }
 }
 
-// Load PDFs at startup
+// 🚀 Initial load of PDFs
 await loadPDFs();
 
-// 🚀 Load calendar URLs from environment variable if provided
+// 🚀 Load calendar URLs from Render environment variable if provided
 if (process.env.CALENDAR_URLS) {
   calendarURLs = process.env.CALENDAR_URLS.split(",").map((u) => u.trim());
   await loadAllCalendars();
 }
 
-// ✅ Root route to confirm backend is ready
+// ✅ Root route
 app.get("/", (req, res) => {
   res.status(200).send("✅ FCA Assistant backend is running.");
 });
@@ -78,12 +79,18 @@ app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
 
+    const context =
+      fcaKnowledge +
+      (calendarText
+        ? "\n--- Google Calendar Events ---\n" + calendarText
+        : "");
+
     const systemPrompt = {
       role: "system",
       content:
-        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents:\n" +
-        fcaKnowledge +
-        "\nIf the question cannot be answered using these materials, politely tell the user to visit the official Faith Christian Academy website (https://www.faithchristianacademy.net) for more information. Do not make up or invent answers.",
+        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents and event calendars:\n" +
+        context +
+        "\nIf the question cannot be answered using these materials, politely tell the user to visit the official Faith Christian Academy website (https://www.faithchristianacademy.net). Do not invent answers.",
     };
 
     const completion = await openai.chat.completions.create({
@@ -102,4 +109,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
-
