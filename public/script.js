@@ -10,10 +10,18 @@ let conversation = [
   }
 ];
 
-// 🧠 Add message to chat window
+// 🧠 Add a message to the chat window
 function addMessage(content, sender, id = null) {
   const msg = document.createElement("div");
-  msg.classList.add("message", sender);
+
+  // ✅ Support multiple class names correctly
+  if (sender.includes(" ")) {
+    const classes = sender.split(" ");
+    msg.classList.add(...classes);
+  } else {
+    msg.classList.add(sender);
+  }
+
   msg.textContent = content;
   if (id) msg.id = id;
   chatBox.appendChild(msg);
@@ -21,9 +29,29 @@ function addMessage(content, sender, id = null) {
   return msg;
 }
 
-// 🚀 Check backend
+// ✨ Create an animated "thinking..." indicator
+function addThinkingMessage() {
+  const id = "thinking-" + Date.now();
+  const msg = addMessage("Assistant is thinking", "bot thinking", id);
+
+  let dotCount = 0;
+  const interval = setInterval(() => {
+    const el = document.getElementById(id);
+    if (!el) {
+      clearInterval(interval);
+      return;
+    }
+    dotCount = (dotCount + 1) % 4; // cycles through 0–3 dots
+    el.textContent = "Assistant is thinking" + ".".repeat(dotCount);
+  }, 500);
+
+  return { id, interval };
+}
+
+// 🚀 Check backend status
 async function checkBackendStatus() {
   const loadingEl = document.getElementById("loading");
+
   const timeout = setTimeout(() => {
     if (loadingEl.style.display !== "none") {
       loadingEl.textContent =
@@ -51,9 +79,8 @@ async function sendMessage() {
   conversation.push({ role: "user", content: text });
   userInput.value = "";
 
-  // ⏳ Temporary "thinking" message
-  const thinkingId = "thinking-" + Date.now();
-  addMessage("Assistant is thinking...", "bot thinking", thinkingId);
+  // ⏳ Add "thinking" message and animation
+  const thinking = addThinkingMessage();
 
   try {
     const res = await fetch("/chat", {
@@ -64,27 +91,34 @@ async function sendMessage() {
 
     if (!res.ok) throw new Error("Network response was not ok");
     const data = await res.json();
-
     const reply = data.reply?.content || "Sorry, I couldn’t get a response.";
 
-    // Replace "thinking" with real answer
-    const thinkingMsg = document.getElementById(thinkingId);
-    if (thinkingMsg) thinkingMsg.textContent = reply;
-    thinkingMsg?.classList.remove("thinking");
+    // Replace "thinking" message with actual response
+    const el = document.getElementById(thinking.id);
+    if (el) {
+      el.textContent = reply;
+      el.classList.remove("thinking");
+    }
+    clearInterval(thinking.interval);
+
     conversation.push({ role: "assistant", content: reply });
   } catch (err) {
     console.error("Error sending message:", err);
-    const thinkingMsg = document.getElementById(thinkingId);
-    if (thinkingMsg)
-      thinkingMsg.textContent =
+    const el = document.getElementById(thinking.id);
+    if (el) {
+      el.textContent =
         "⚠️ The FCA Assistant is still starting up. Please try again shortly.";
+      el.classList.remove("thinking");
+    }
+    clearInterval(thinking.interval);
   }
 }
 
-// 🎯 Listeners
+// 🎯 Event listeners
 sendBtn.onclick = sendMessage;
-userInput.addEventListener("keypress", e => {
+userInput.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendMessage();
 });
 
+// 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
