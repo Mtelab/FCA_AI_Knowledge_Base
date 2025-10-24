@@ -124,9 +124,6 @@ function triggerFalconShow() {
 async function sendMessage() {
   const text = userInput.value.trim();  
   if (!text) return;
-
-        const text = userInput.value.trim();
-  if (!text) return;
   
   // 🦅 Trigger animation when user says "go falcons"
   if (text.toLowerCase().includes("go falcons")) {
@@ -182,6 +179,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
