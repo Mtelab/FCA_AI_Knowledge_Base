@@ -45,7 +45,7 @@ async function loadPDFs() {
           console.log(`🧠 Summarizing ${file} for clearer staff listings...`);
           try {
             const summary = await openai.chat.completions.create({
-              model: "gpt-4o-mini", // you can use gpt-5-mini later once verified
+              model: "gpt-5-mini", // you can use gpt-5-mini later once verified
               messages: [
                 {
                   role: "system",
@@ -177,6 +177,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
