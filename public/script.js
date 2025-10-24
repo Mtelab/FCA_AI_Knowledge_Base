@@ -10,23 +10,24 @@ let conversation = [
   }
 ];
 
-// 🧠 Add a message to the chat window
-function addMessage(content, sender) {
+// 🧠 Add message to chat window
+function addMessage(content, sender, id = null) {
   const msg = document.createElement("div");
   msg.classList.add("message", sender);
   msg.textContent = content;
+  if (id) msg.id = id;
   chatBox.appendChild(msg);
   chatBox.scrollTop = chatBox.scrollHeight;
+  return msg;
 }
 
-// 🚀 Check if backend is awake, then hide the loading screen
+// 🚀 Check backend
 async function checkBackendStatus() {
   const loadingEl = document.getElementById("loading");
-
-  // After 15 seconds, if still loading, show an alternate message
   const timeout = setTimeout(() => {
     if (loadingEl.style.display !== "none") {
-      loadingEl.textContent = "⏳ FCA Assistant is still waking up, please wait...";
+      loadingEl.textContent =
+        "⏳ FCA Assistant is still waking up, please wait...";
     }
   }, 15000);
 
@@ -35,15 +36,13 @@ async function checkBackendStatus() {
     if (res.ok) {
       clearTimeout(timeout);
       loadingEl.style.display = "none";
-    } else {
-      console.warn("Backend not ready yet...");
     }
   } catch (err) {
     console.warn("Backend unreachable:", err);
   }
 }
 
-// 📨 Send message to backend
+// 💬 Send message
 async function sendMessage() {
   const text = userInput.value.trim();
   if (!text) return;
@@ -51,6 +50,10 @@ async function sendMessage() {
   addMessage(text, "user");
   conversation.push({ role: "user", content: text });
   userInput.value = "";
+
+  // ⏳ Temporary "thinking" message
+  const thinkingId = "thinking-" + Date.now();
+  addMessage("Assistant is thinking...", "bot thinking", thinkingId);
 
   try {
     const res = await fetch("/chat", {
@@ -61,23 +64,27 @@ async function sendMessage() {
 
     if (!res.ok) throw new Error("Network response was not ok");
     const data = await res.json();
+
     const reply = data.reply?.content || "Sorry, I couldn’t get a response.";
-    addMessage(reply, "bot");
+
+    // Replace "thinking" with real answer
+    const thinkingMsg = document.getElementById(thinkingId);
+    if (thinkingMsg) thinkingMsg.textContent = reply;
+    thinkingMsg?.classList.remove("thinking");
     conversation.push({ role: "assistant", content: reply });
   } catch (err) {
     console.error("Error sending message:", err);
-    addMessage(
-      "⚠️ The FCA Assistant is still starting up. Please wait a moment and try again.",
-      "bot"
-    );
+    const thinkingMsg = document.getElementById(thinkingId);
+    if (thinkingMsg)
+      thinkingMsg.textContent =
+        "⚠️ The FCA Assistant is still starting up. Please try again shortly.";
   }
 }
 
-// 🎯 Event listeners
+// 🎯 Listeners
 sendBtn.onclick = sendMessage;
 userInput.addEventListener("keypress", e => {
   if (e.key === "Enter") sendMessage();
 });
 
-// 🔄 Run check on page load
 window.addEventListener("load", checkBackendStatus);
