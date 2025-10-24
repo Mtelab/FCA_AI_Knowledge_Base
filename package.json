@@ -1,4 +1,4 @@
-d{
+{
   "name": "fca-ai-knowledge-base",
   "version": "1.0.0",
   "type": "module",
@@ -15,6 +15,7 @@ d{
     "puppeteer": "^22.5.0"
   }
 }
+
 
 
 
