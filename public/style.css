@@ -189,10 +189,19 @@ h1 {
   to {opacity: 1;}
 }
 
+.message.bot {
+  white-space: normal;
+  line-height: 1.6;
+  margin: 8px 0;
+}
 
+.message.bot strong {
+  display: block;
+  margin-top: 8px;
+  font-weight: 600;
+  color: #ffd369;
+}
 
-
-
-
-
-
+.message.bot br + strong {
+  margin-top: 10px;
+}
