@@ -40,13 +40,14 @@ async function loadPDFs() {
 // Load PDFs at startup
 await loadPDFs();
 
-// 🌐 Smart FCA website crawler using Puppeteer
+// 🌐 Deep smart crawler with Puppeteer (auto-discovers pages)
 async function searchFCAWebsite(query) {
   const baseUrl = "https://www.faithchristianacademy.net";
   const visited = new Set();
   const toVisit = [baseUrl];
   const q = query.toLowerCase();
-  const maxPages = 20; // safety limit
+  const maxPages = 40; // crawl limit
+  const matchPattern = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 
   async function fetchPage(url) {
     let browser;
@@ -60,31 +61,34 @@ async function searchFCAWebsite(query) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
       );
 
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-      const text = await page.evaluate(() => document.body.innerText);
+      console.log("🔍 Visiting:", url);
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+      const text = await page.evaluate(() => document.body.innerText || "");
       const lower = text.toLowerCase();
 
-      // ✅ Found match
-      if (lower.includes(q)) {
+      if (matchPattern.test(lower)) {
         const start = lower.indexOf(q);
         const snippet = text.substring(Math.max(0, start - 150), start + 400);
         await browser.close();
+        console.log("✅ Found match on:", url);
         return { found: true, snippet: snippet.trim(), url };
       }
 
-      // 🕸️ Collect new internal links
+      // 🕸️ Gather more internal links
       const links = await page.$$eval("a[href]", (as) =>
-        as.map((a) => a.href).filter((h) => h && h.startsWith("https://www.faithchristianacademy.net"))
+        as
+          .map((a) => a.href)
+          .filter(
+            (href) =>
+              href &&
+              href.startsWith("https://www.faithchristianacademy.net") &&
+              !href.endsWith(".pdf") &&
+              !href.includes("mailto")
+          )
       );
 
-      links.forEach((nextUrl) => {
-        if (
-          !visited.has(nextUrl) &&
-          !nextUrl.endsWith(".pdf") &&
-          !nextUrl.includes("mailto")
-        ) {
-          toVisit.push(nextUrl);
-        }
+      links.forEach((link) => {
+        if (!visited.has(link)) toVisit.push(link);
       });
 
       await browser.close();
@@ -96,11 +100,11 @@ async function searchFCAWebsite(query) {
     }
   }
 
-  // Crawl and search pages until a match is found
   while (toVisit.length && visited.size < maxPages) {
     const url = toVisit.shift();
     if (!url || visited.has(url)) continue;
     visited.add(url);
+
     const result = await fetchPage(url);
     if (result.found) {
       return `🌐 Found on the FCA website (${result.url}):\n\n${result.snippet}`;
@@ -156,3 +160,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
