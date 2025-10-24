@@ -14,23 +14,28 @@ function addMessage(content, sender, id = null) {
   const msg = document.createElement("div");
 
   // Allow multiple CSS classes like "bot thinking"
-  if (sender.includes(" ")) {
-    msg.classList.add(...sender.split(" "));
-  } else {
-    msg.classList.add(sender);
+  if (sender.includes(" ")) msg.classList.add(...sender.split(" "));
+  else msg.classList.add(sender);
+
+  // Clean and normalize escaped newlines
+  let formatted = content.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+
+  // 🧠 Auto-insert line breaks before bold section headers (like **Elementary**)
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "\n<strong>$1</strong>\n");
+
+  // 🧹 Split long sentences at periods if it's one big wall
+  if (!formatted.includes("\n")) {
+    formatted = formatted.replace(/\. ([A-Z])/g, ".<br><br>$1");
   }
 
-  // 🔧 Normalize escaped newlines before formatting
-  let formatted = content
-    .replace(/\\n/g, "\n")          // turn "\n" into real newlines
-    .replace(/\r\n/g, "\n")         // Windows line breaks
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // bold markdown
-    .replace(/(?:^|\n)- /g, "<br>• ") // bullets at start of lines
-    .replace(/\n/g, "<br>");        // convert remaining newlines to <br>
+  // 🪄 Convert dashes to bullets, newlines to <br>
+  formatted = formatted
+    .replace(/- /g, "<br>• ")
+    .replace(/\n+/g, "<br>");
 
-  msg.innerHTML = formatted;
-
+  msg.innerHTML = formatted.trim();
   if (id) msg.id = id;
+
   chatBox.appendChild(msg);
   chatBox.scrollTop = chatBox.scrollHeight;
   return msg;
@@ -129,5 +134,6 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
