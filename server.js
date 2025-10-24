@@ -31,17 +31,55 @@ async function loadPDFs() {
       if (file.toLowerCase().endsWith(".pdf")) {
         const dataBuffer = fs.readFileSync(path.join(dataDir, file));
         const pdfData = await pdfParse(dataBuffer);
-        fcaKnowledge += `\n--- ${file} ---\n${pdfData.text}\n`;
+        let text = pdfData.text.trim();
+
+        // 🧠 Check if it looks like a staff/personnel file
+        const isStaffDoc =
+          file.toLowerCase().includes("support") ||
+          file.toLowerCase().includes("staff") ||
+          file.toLowerCase().includes("personnel") ||
+          file.toLowerCase().includes("faculty") ||
+          file.toLowerCase().includes("administration");
+
+        if (isStaffDoc && text.length > 0) {
+          console.log(`🧠 Summarizing ${file} for clearer staff listings...`);
+          try {
+            const summary = await openai.chat.completions.create({
+              model: "gpt-4o-mini", // you can use gpt-5-mini later once verified
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "Extract all staff names and roles from this FCA document. Format as 'Name – Title'. Keep it factual and concise."
+                },
+                { role: "user", content: text.slice(0, 15000) }
+              ]
+            });
+
+            const cleaned = summary.choices?.[0]?.message?.content?.trim();
+            if (cleaned) {
+              fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
+            } else {
+              fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
+            }
+          } catch (err) {
+            console.warn(`⚠️ Could not summarize ${file}:`, err.message);
+            fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
+          }
+        } else {
+          // Normal PDF append
+          fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
+        }
       }
     }
-    console.log(`✅ Loaded ${files.length} FCA PDF files.`);
+
+    console.log("✅ Loaded and processed all FCA PDF files.");
   } catch (err) {
     console.error("⚠️ Error loading PDF files:", err);
   }
 }
 
 // 📅 Load all Google Calendars (from .ics URLs)
-
 async function loadAllCalendars() {
   calendarText = "";
   const now = new Date(); // current time
@@ -139,6 +177,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
