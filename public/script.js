@@ -82,6 +82,31 @@ async function checkBackendStatus() {
   }
 }
 
+// 💙💛 Falcon Light Show
+function triggerFalconShow() {
+  const show = document.getElementById("falcon-show");
+  show.innerHTML = ""; // clear previous
+
+  // Create laser beams
+  for (let i = 0; i < 6; i++) {
+    const laser = document.createElement("div");
+    laser.className = "laser";
+    laser.style.left = `${Math.random() * 100}%`;
+    laser.style.animationDelay = `${Math.random()}s`;
+    show.appendChild(laser);
+  }
+
+  // Create the falcon
+  const falcon = document.createElement("div");
+  falcon.className = "falcon";
+  show.appendChild(falcon);
+
+  // Remove after animation
+  setTimeout(() => {
+    show.innerHTML = "";
+  }, 6000);
+}
+
 // 💬 Send message
 async function sendMessage() {
   const text = userInput.value.trim();
@@ -134,6 +159,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
