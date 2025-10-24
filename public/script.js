@@ -15,17 +15,20 @@ function addMessage(content, sender, id = null) {
 
   // Allow multiple CSS classes like "bot thinking"
   if (sender.includes(" ")) {
-    const classes = sender.split(" ");
-    msg.classList.add(...classes);
+    msg.classList.add(...sender.split(" "));
   } else {
     msg.classList.add(sender);
   }
 
-  // ✅ Render readable formatted text
-  msg.innerHTML = content
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // bold
-    .replace(/- /g, "<br>• ") // bullet list
-    .replace(/\n/g, "<br>"); // newlines
+  // 🔧 Normalize escaped newlines before formatting
+  let formatted = content
+    .replace(/\\n/g, "\n")          // turn "\n" into real newlines
+    .replace(/\r\n/g, "\n")         // Windows line breaks
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // bold markdown
+    .replace(/(?:^|\n)- /g, "<br>• ") // bullets at start of lines
+    .replace(/\n/g, "<br>");        // convert remaining newlines to <br>
+
+  msg.innerHTML = formatted;
 
   if (id) msg.id = id;
   chatBox.appendChild(msg);
@@ -126,4 +129,5 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
