@@ -158,11 +158,13 @@ h1 {
 
 .left-wing {
   transform-origin: 30% 50%;
+  animation-duration: 0.42s;
 }
 
 .right-wing {
   transform-origin: 70% 50%;
-  animation-direction: alternate-reverse; /* 👈 makes right wing flap opposite */
+  animation-direction: alternate-reverse;
+  animation-duration: 0.38s;/* 👈 makes right wing flap opposite */
 }
 
 @keyframes wingFlap {
@@ -187,6 +189,7 @@ h1 {
   from {opacity: 0;}
   to {opacity: 1;}
 }
+
 
 
 
