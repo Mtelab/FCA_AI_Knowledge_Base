@@ -109,9 +109,17 @@ function triggerFalconShow() {
 
 // 💬 Send message
 async function sendMessage() {
-  const text = userInput.value.trim();
+  const text = userInput.value.trim();  
   if (!text) return;
 
+        const text = userInput.value.trim();
+  if (!text) return;
+  
+  // 🦅 Trigger animation when user says "go falcons"
+  if (text.toLowerCase().includes("go falcons")) {
+    triggerFalconShow();
+  }
+  
   addMessage(text, "user");
   conversation.push({ role: "user", content: text });
   userInput.value = "";
@@ -126,13 +134,7 @@ async function sendMessage() {
       body: JSON.stringify({ messages: conversation })
     });
 
-        const text = userInput.value.trim();
-    if (!text) return;
-    
-    // 🦅 Trigger animation when user says "go falcons"
-    if (text.toLowerCase().includes("go falcons")) {
-      triggerFalconShow();
-    }
+
 
     if (!res.ok) throw new Error("Network response was not ok");
     const data = await res.json();
@@ -167,6 +169,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
