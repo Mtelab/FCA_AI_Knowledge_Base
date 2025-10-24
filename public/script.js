@@ -13,29 +13,33 @@ let conversation = [
 function addMessage(content, sender, id = null) {
   const msg = document.createElement("div");
 
-  // Allow multiple CSS classes like "bot thinking"
   if (sender.includes(" ")) msg.classList.add(...sender.split(" "));
   else msg.classList.add(sender);
 
-  // Clean and normalize escaped newlines
-  let formatted = content.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+  // Clean escaped newlines and normalize whitespace
+  let formatted = content
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
 
-  // 🧠 Auto-insert line breaks before bold section headers (like **Elementary**)
-  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "\n<strong>$1</strong>\n");
-
-  // 🧹 Split long sentences at periods if it's one big wall
-  if (!formatted.includes("\n")) {
-    formatted = formatted.replace(/\. ([A-Z])/g, ".<br><br>$1");
-  }
-
-  // 🪄 Convert dashes to bullets, newlines to <br>
+  // 🧠 Add line breaks before numbered or bulleted list items
   formatted = formatted
-    .replace(/- /g, "<br>• ")
-    .replace(/\n+/g, "<br>");
+    .replace(/(\d+\.\s)/g, "\n$1")         // new line before 1. 2. 3.
+    .replace(/(\*\*)/g, "\n$1")            // break before bold headers sometimes
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"); // render **bold**
+
+  // 🔹 Convert numbered lists and bullets into HTML structure
+  formatted = formatted
+    .replace(/(\d+)\.\s<strong>(.*?)<\/strong>:/g, "<br><strong>$1. $2:</strong>")
+    .replace(/(\d+)\.\s/g, "<br><strong>$1.</strong> ")
+    .replace(/- /g, "<br>• ");
+
+  // Preserve paragraph breaks and cleanup double breaks
+  formatted = formatted.replace(/\n+/g, "<br>").replace(/<br><br>/g, "<br>");
 
   msg.innerHTML = formatted.trim();
-  if (id) msg.id = id;
 
+  if (id) msg.id = id;
   chatBox.appendChild(msg);
   chatBox.scrollTop = chatBox.scrollHeight;
   return msg;
@@ -179,6 +183,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
