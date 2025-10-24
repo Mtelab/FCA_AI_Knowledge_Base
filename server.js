@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import ical from "node-ical"; // ✅ for reading .ics files
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
@@ -19,6 +20,8 @@ app.use(express.static(path.join(__dirname, "public")));
 // 🧠 Load FCA Knowledge Base PDFs automatically
 const dataDir = path.resolve("./data");
 let fcaKnowledge = "";
+let calendarURLs = [];
+let calendarText = "";
 
 async function loadPDFs() {
   try {
@@ -36,8 +39,34 @@ async function loadPDFs() {
   }
 }
 
+// 🗓️ Combine multiple Google Calendars
+async function loadAllCalendars() {
+  try {
+    calendarText = "";
+    for (const url of calendarURLs) {
+      console.log(`🔄 Fetching calendar: ${url}`);
+      const data = await ical.async.fromURL(url);
+      const events = Object.values(data).filter((e) => e.type === "VEVENT");
+      for (const event of events) {
+        calendarText += `\nEvent: ${event.summary}\nDate: ${event.start}\nDescription: ${
+          event.description || ""
+        }\nLocation: ${event.location || ""}\n---\n`;
+      }
+    }
+    console.log(`✅ Loaded ${calendarURLs.length} calendars with combined events.`);
+  } catch (err) {
+    console.error("⚠️ Error loading calendars:", err);
+  }
+}
+
 // Load PDFs at startup
 await loadPDFs();
+
+// 🚀 Load calendar URLs from environment variable if provided
+if (process.env.CALENDAR_URLS) {
+  calendarURLs = process.env.CALENDAR_URLS.split(",").map((u) => u.trim());
+  await loadAllCalendars();
+}
 
 // ✅ Root route to confirm backend is ready
 app.get("/", (req, res) => {
@@ -73,3 +102,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
