@@ -41,7 +41,6 @@ async function loadPDFs() {
 }
 
 // 📅 Load all Google Calendars (from .ics URLs)
-import ical from "node-ical"; // make sure this is imported at the top
 
 async function loadAllCalendars() {
   calendarText = "";
@@ -140,6 +139,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
