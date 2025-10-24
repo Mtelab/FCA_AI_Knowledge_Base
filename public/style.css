@@ -87,7 +87,7 @@ h1 {
   font-weight: bold;
 }
 
-/* 🦅 Falcon Light Show */
+/* ⚡ Falcon Light Show */
 #falcon-show {
   position: fixed;
   inset: 0;
@@ -96,57 +96,77 @@ h1 {
   z-index: 9999;
 }
 
+/* 🦅 The Falcon SVG */
 .falcon {
   position: absolute;
-  width: 160px;
-  height: 160px;
-  background: radial-gradient(circle at 40% 40%, gold 10%, royalblue 70%, transparent 90%);
-  border-radius: 50%;
-  box-shadow: 0 0 40px gold, 0 0 80px royalblue, 0 0 150px deepskyblue;
-  animation: falconFlight 6s ease-in-out forwards;
+  width: 200px;
+  height: 200px;
+  left: -250px;
+  top: 50%;
+  transform: translateY(-50%);
+  animation: falconFlight 7s ease-in-out forwards;
+  filter: drop-shadow(0 0 15px gold) drop-shadow(0 0 25px dodgerblue);
 }
 
+/* 🪶 Wing flap animation */
+.falcon svg .wing {
+  transform-origin: center;
+  animation: wingFlap 0.5s ease-in-out infinite alternate;
+}
+
+/* 💥 Laser beams */
 .laser {
   position: absolute;
-  width: 6px;
+  width: 5px;
   height: 100vh;
   background: linear-gradient(to bottom, gold, royalblue);
-  opacity: 0.7;
-  box-shadow: 0 0 20px gold, 0 0 60px royalblue;
+  opacity: 0.6;
+  box-shadow: 0 0 30px gold, 0 0 60px deepskyblue;
   animation: laserFlash 0.8s linear infinite alternate;
 }
 
+/* ✈️ Falcon flight path */
 @keyframes falconFlight {
   0% {
-    transform: translate(-200px, 60vh) rotate(-20deg) scale(0.8);
+    transform: translate(-250px, 50%) scale(0.5) rotate(-15deg);
     opacity: 0;
   }
-  20% {
-    transform: translate(20vw, 30vh) rotate(0deg) scale(1);
+  10% {
+    transform: translate(10vw, 30%) scale(1) rotate(5deg);
     opacity: 1;
   }
-  40% {
-    transform: translate(45vw, 50vh) scale(1.2);
+  30% {
+    transform: translate(40vw, 50%) scale(1.2) rotate(0deg);
   }
-  60% {
-    transform: translate(50vw, 55vh) scale(1);
+  50% {
+    transform: translate(50vw, 55%) scale(1) rotate(-5deg);
   }
-  80% {
-    transform: translate(80vw, 20vh) rotate(15deg);
-    opacity: 1;
+  70% {
+    transform: translate(80vw, 30%) scale(1.1) rotate(10deg);
   }
   100% {
-    transform: translate(120vw, 10vh) rotate(40deg);
+    transform: translate(120vw, 20%) scale(0.8) rotate(25deg);
     opacity: 0;
   }
 }
 
+/* 🔵 Flashing lasers */
 @keyframes laserFlash {
   from {
     opacity: 0.4;
   }
   to {
-    opacity: 0.9;
+    opacity: 1;
+  }
+}
+
+/* 🪽 Wing movement */
+@keyframes wingFlap {
+  from {
+    transform: rotateX(15deg);
+  }
+  to {
+    transform: rotateX(-25deg);
   }
 }
 
@@ -154,4 +174,5 @@ h1 {
   from {opacity: 0;}
   to {opacity: 1;}
 }
+
 
