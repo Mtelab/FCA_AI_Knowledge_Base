@@ -10,11 +10,10 @@ let conversation = [
   }
 ];
 
-// 🧠 Add a message to the chat window
 function addMessage(content, sender, id = null) {
   const msg = document.createElement("div");
 
-  // ✅ Support multiple class names correctly
+  // Allow multiple CSS classes like "bot thinking"
   if (sender.includes(" ")) {
     const classes = sender.split(" ");
     msg.classList.add(...classes);
@@ -22,7 +21,12 @@ function addMessage(content, sender, id = null) {
     msg.classList.add(sender);
   }
 
-  msg.textContent = content;
+  // ✅ Render readable formatted text
+  msg.innerHTML = content
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>") // bold
+    .replace(/- /g, "<br>• ") // bullet list
+    .replace(/\n/g, "<br>"); // newlines
+
   if (id) msg.id = id;
   chatBox.appendChild(msg);
   chatBox.scrollTop = chatBox.scrollHeight;
@@ -122,3 +126,4 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
