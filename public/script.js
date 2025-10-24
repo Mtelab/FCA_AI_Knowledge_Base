@@ -99,20 +99,20 @@ function triggerFalconShow() {
   const falcon = document.createElement("div");
   falcon.className = "falcon";
   falcon.innerHTML = `
-    <svg viewBox="0 0 512 512">
-      <g fill="url(#grad)" stroke="gold" stroke-width="3">
-        <path class="wing" d="M50 250 Q150 100 300 220 Q150 180 50 250 Z" />
-        <path class="wing" d="M462 250 Q350 100 200 220 Q350 180 462 250 Z" />
-        <polygon points="210,240 300,240 255,320" fill="gold" stroke="royalblue" stroke-width="2"/>
-        <circle cx="255" cy="240" r="20" fill="deepskyblue" stroke="gold" stroke-width="3"/>
-      </g>
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="gold"/>
-          <stop offset="100%" stop-color="royalblue"/>
-        </linearGradient>
-      </defs>
-    </svg>
+  <svg viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="gold"/>
+        <stop offset="100%" stop-color="royalblue"/>
+      </linearGradient>
+    </defs>
+    <g fill="url(#grad)" stroke="gold" stroke-width="3">
+      <path class="wing left-wing" d="M50 250 Q150 100 300 220 Q150 180 50 250 Z" />
+      <path class="wing right-wing" d="M462 250 Q350 100 200 220 Q350 180 462 250 Z" />
+      <polygon points="210,240 300,240 255,320" fill="gold" stroke="royalblue" stroke-width="2"/>
+      <circle cx="255" cy="240" r="20" fill="deepskyblue" stroke="gold" stroke-width="3"/>
+    </g>
+  </svg>
   `;
   show.appendChild(falcon);
 
@@ -179,6 +179,7 @@ userInput.addEventListener("keypress", (e) => {
 
 // 🔄 Check backend on load
 window.addEventListener("load", checkBackendStatus);
+
 
 
 
