@@ -87,7 +87,71 @@ h1 {
   font-weight: bold;
 }
 
+/* 🦅 Falcon Light Show */
+#falcon-show {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9999;
+}
+
+.falcon {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(circle at 40% 40%, gold 10%, royalblue 70%, transparent 90%);
+  border-radius: 50%;
+  box-shadow: 0 0 40px gold, 0 0 80px royalblue, 0 0 150px deepskyblue;
+  animation: falconFlight 6s ease-in-out forwards;
+}
+
+.laser {
+  position: absolute;
+  width: 6px;
+  height: 100vh;
+  background: linear-gradient(to bottom, gold, royalblue);
+  opacity: 0.7;
+  box-shadow: 0 0 20px gold, 0 0 60px royalblue;
+  animation: laserFlash 0.8s linear infinite alternate;
+}
+
+@keyframes falconFlight {
+  0% {
+    transform: translate(-200px, 60vh) rotate(-20deg) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(20vw, 30vh) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translate(45vw, 50vh) scale(1.2);
+  }
+  60% {
+    transform: translate(50vw, 55vh) scale(1);
+  }
+  80% {
+    transform: translate(80vw, 20vh) rotate(15deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(120vw, 10vh) rotate(40deg);
+    opacity: 0;
+  }
+}
+
+@keyframes laserFlash {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
 @keyframes fadeIn {
   from {opacity: 0;}
   to {opacity: 1;}
 }
+
