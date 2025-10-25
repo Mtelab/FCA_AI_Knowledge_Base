@@ -166,6 +166,20 @@ app.post("/chat", async (req, res) => {
       messages: [systemPrompt, ...userMessages],
     });
 
+        // 📧 If user asks for a staff email, generate it automatically
+    if (/email/i.test(lastUserMessage) && /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)) {
+      // Try to find a name in the user’s request
+      const nameMatch = lastUserMessage.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
+      if (nameMatch) {
+        const first = nameMatch[1].toLowerCase();
+        const last = nameMatch[2].toLowerCase();
+        const email = `${first}.${last}@faithchristianacademy.net`;
+        reply = `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`;
+      } else {
+        reply = "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).";
+      }
+    }
+
     res.json({ reply: completion.choices[0].message });
   } catch (err) {
     console.error("❌ Error:", err);
@@ -177,6 +191,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
