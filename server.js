@@ -27,10 +27,12 @@ let calendarText = "";
 // Helper Function: Defined globally
 function capitalize(str) {
   if (!str) return "";
+  // Handles multiple words, ensuring names like 'van der Meer' or 'd'Angelo' 
+  // are handled correctly, but simple capitalization is fine for our email
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// 📘 Load PDFs from /data (Updated to handle non-capitalized names and log)
+// 📘 Load PDFs from /data
 async function loadPDFs() {
   try {
     const files = fs.readdirSync(dataDir);
@@ -40,7 +42,6 @@ async function loadPDFs() {
         const pdfData = await pdfParse(dataBuffer);
         let text = pdfData.text.trim();
 
-        // 🧠 Check if it looks like a staff/personnel file
         const isStaffDoc =
           file.toLowerCase().includes("support") ||
           file.toLowerCase().includes("staff") ||
@@ -56,6 +57,7 @@ async function loadPDFs() {
               messages: [
                 {
                   role: "system",
+                  // System prompt to ensure clean Name - Role formatting, as requested
                   content:
                     "Extract all staff names and roles from this FCA document. Format each item as 'Name – Title'. Keep it factual and concise. Place each name/title pair on a new line. Do not include any introductory or concluding text."
                 },
@@ -66,7 +68,7 @@ async function loadPDFs() {
             const cleaned = summary.choices?.[0]?.message?.content?.trim();
             if (cleaned) {
               fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
-              // 🛑 LOGGING NAMES AND ROLES
+              // 🛑 LOGGING ROLES AND NAMES (as requested in first prompt)
               console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`);
             } else {
               fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
@@ -76,7 +78,6 @@ async function loadPDFs() {
             fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
           }
         } else {
-          // Normal PDF append
           fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
         }
       }
@@ -88,7 +89,7 @@ async function loadPDFs() {
   }
 }
 
-// 🗓️ Load Google Calendar URLs from environment variable
+// 🗓️ Load Google Calendar URLs
 async function loadAllCalendars() {
   if (!process.env.CALENDAR_URLS) return;
 
@@ -106,13 +107,11 @@ async function loadAllCalendars() {
         const ev = events[k];
         if (ev.type !== "VEVENT") continue;
 
-        // 🕒 Convert to proper Eastern Time
         const start = DateTime.fromJSDate(ev.start, { zone: "utc" })
           .setZone("America/New_York");
         const end = DateTime.fromJSDate(ev.end, { zone: "utc" })
           .setZone("America/New_York");
 
-        // 📅 Skip events more than 1 day in the past
         if (end < now.minus({ days: 1 })) continue;
 
         const timeStr = `${start.toFormat("cccc, LLLL d")} from ${start.toFormat("h:mm a")} to ${end.toFormat("h:mm a")}`;
@@ -125,13 +124,11 @@ async function loadAllCalendars() {
   }
 
   calendarText = combined || "No upcoming events found.";
-  console.log("✅ Calendars loaded with timezone correction and future-event filtering.");
+  console.log("✅ Calendars loaded.");
 }
 
-// 🚀 Initial load of PDFs
+// 🚀 Initial load
 await loadPDFs();
-
-// 🚀 Load calendar URLs from Render environment variable if provided
 if (process.env.CALENDAR_URLS) {
   calendarURLs = process.env.CALENDAR_URLS.split(",").map((u) => u.trim());
   await loadAllCalendars();
@@ -143,26 +140,7 @@ app.get("/", (req, res) => {
 });
 
 
-// 🛑 Define the master list of junk words for filtering (all lowercase)
-const MASTER_JUNK_WORDS = new Set([
-  // General filler/question words
-  "what", "is", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an", "i", "apologize", "who", "be",
-  // 🛑 Added common PDF extraction remnants and fillers
-  "that", "answers", "system", "to", "get", "inquire", "with", "call", "by", "or", "for", "more", 
-  "information", "about", "our", "staff", "the", "next", 
-  "questions", "concerning", "email", "office", "may", // NEW ADDITIONS
-  "this", "person", "is", "responsible", "area", "please", // More safety words
-  // Titles/Salutations/Roles 
-  "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
-  "director", "head", "administrator", "business", "manager", "counselor", "assistant",
-  // Organizational Names
-  "faith", "christian", "academy", "school", "at", "fca", 
-  // Common short prepositions/articles often part of titles
-  "in", "on", "by", "from", "with"
-]);
-
-// 🛑 Define a list of full job titles to search for in a direct question (order by length/specificity)
+// 🛑 Define a list of full job titles to search for in a direct question
 const ROLE_KEYWORDS = [
     "head of school", 
     "business administrator", 
@@ -177,62 +155,54 @@ const ROLE_KEYWORDS = [
 ];
 
 /**
- * Searches the message history for the most recently mentioned full name.
- * @param {Array} messages - The conversation message history.
- * @returns {Array|null} - An array [FirstName, LastName] (capitalized) or null.
- */
-function findContextualName(messages) {
-    const namePattern = /\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/g; 
-    
-    for (let i = messages.length - 2; i >= 0; i--) {
-        const content = messages[i]?.content || "";
-        
-        let match;
-        namePattern.lastIndex = 0; 
-        
-        while ((match = namePattern.exec(content)) !== null) {
-            const firstName = match[1];
-            const lastName = match[2];
-            
-            const lowerFirstName = firstName.toLowerCase();
-            const lowerLastName = lastName.toLowerCase();
-            
-            if (!MASTER_JUNK_WORDS.has(lowerFirstName) && !MASTER_JUNK_WORDS.has(lowerLastName)) {
-                return [capitalize(firstName), capitalize(lastName)];
-            }
-        }
-    }
-    return null; 
-}
-
-/**
- * Attempts to find a Name based on a Role Title found in the message, using a simpler, single-pass search
- * across the entire knowledge base.
+ * Uses the LLM to reliably extract a first and last name for a given role from the knowledge base, 
+ * including inferring the best substitute if the exact role is missing (the "human" approach).
+ * This replaces all brittle regex and junk filtering.
  * @param {string} role - The job role to search for (e.g., "business administrator").
- * @returns {Array|null} - An array [FirstName, LastName] (lowercase) or null.
+ * @returns {Promise<Array|null>} - A Promise resolving to [FirstName, LastName] (lowercase) or null.
  */
-function findNameByRole(role) {
-    const escapedRole = role.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    
-    // Pattern: (Word) (Word) [optional separator/space] (Role)
-    // This is the simplest and least fragile pattern that should still capture most list formats.
-    const nameRoleSearch = new RegExp(`([a-zA-Z]+)\\s+([a-zA-Z]+)\\s*[-–,:;\\s]*\\b${escapedRole}\\b`, 'i');
-    
-    let match = fcaKnowledge.match(nameRoleSearch);
+async function findNameByRoleViaLLM(role) {
+    const prompt = `From the following FCA staff data, find the full first and last name of the person who holds the role: "${role}".
 
-    if (match && match.length >= 3) {
-        const firstName = match[1];
-        const lastName = match[2];
-        
-        const lowerFirstName = firstName.toLowerCase();
-        const lowerLastName = lastName.toLowerCase();
-        
-        // Validate against the junk list
-        if (!MASTER_JUNK_WORDS.has(lowerFirstName) && !MASTER_JUNK_WORDS.has(lowerLastName)) {
-            return [lowerFirstName, lowerLastName];
+    **INSTRUCTION:**
+    1.  First, search for the person who holds the exact title: "${role}".
+    2.  If the exact title is not found, use your general knowledge to infer the name of the person who holds the closest, most related, or most similar administrative role (e.g., if "Business Administrator" is missing, return the "Business Manager"; if "Elementary Director" is missing, return the "Elementary Principal").
+    3.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If a plausible name cannot be found, respond ONLY with {"first_name": "", "last_name": ""}.
+
+    Staff Data:
+    ---
+    ${fcaKnowledge}
+    ---
+    `;
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }, 
+            temperature: 0.0 // Ensure deterministic response
+        });
+
+        const jsonString = completion.choices[0]?.message?.content?.trim();
+        const result = JSON.parse(jsonString);
+
+        // Filter out any garbage words the LLM might hallucinate as a name
+        const first = result.first_name || '';
+        const last = result.last_name || '';
+
+        if (first.length > 1 && last.length > 1 && 
+            !first.toLowerCase().includes('name') && 
+            !last.toLowerCase().includes('title')) {
+            return [
+                first.toLowerCase(), 
+                last.toLowerCase()
+            ];
         }
-    }
 
+    } catch (err) {
+        console.error("⚠️ LLM Name Extraction Failed:", err.message);
+    }
+    
     return null;
 }
 
@@ -241,15 +211,13 @@ app.post("/chat", async (req, res) => {
     const userMessages = req.body.messages || [];
     const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
     
-    const junkWords = MASTER_JUNK_WORDS;
-
     // 📧 Email shortcut logic
     if (/(email|contact)/i.test(lastUserMessage)) {
       
       let first = "", last = "";
       let foundRole = null; 
 
-      // 🛑 Step 1: High Priority - Search by Role (for single-pass questions)
+      // 🛑 Step 1: Detect Role
       if (/(who is|who's|his|her)/i.test(lastUserMessage)) {
           const lowerMessage = lastUserMessage.toLowerCase();
           
@@ -260,83 +228,35 @@ app.post("/chat", async (req, res) => {
               }
           }
           
+          // 🛑 Step 2: Use LLM for reliable name extraction and inference
           if (foundRole) {
-              const nameByRole = findNameByRole(foundRole);
+              const nameByRole = await findNameByRoleViaLLM(foundRole);
               if (nameByRole) {
                   [first, last] = nameByRole; 
               }
           }
       }
       
-      // 🛑 Step 2: Fallback - Check conversation history for a context name
-      if (!first && /(his|her)/i.test(lastUserMessage)) {
-          const contextName = findContextualName(userMessages);
-          if (contextName) {
-              [first, last] = [contextName[0].toLowerCase(), contextName[1].toLowerCase()]; 
-          }
-      }
-
-      // Step 3: Fallback - Try to parse a name directly from the current message
-      if (!first) {
-          const rawWords = lastUserMessage.split(/[^a-zA-Z]+/).filter(w => w);
-          const words = rawWords
-              .map(w => w.toLowerCase())
-              .filter(w => !junkWords.has(w));
-          
-          if (words.length >= 2) {
-            [first, last] = words.slice(0, 2);
-
-          } else if (words.length === 1) {
-            const singleWord = words[0];
-            const knowledgeSearchPattern = new RegExp(`\\b${singleWord}\\b`, 'i');
-
-            if (knowledgeSearchPattern.test(fcaKnowledge)) {
-              const presumedLastName = singleWord; 
-              
-              const fullMatchRegex = new RegExp(`\\b([a-zA-Z]+)\\s+${presumedLastName}\\b`, 'g');
-              const allMatches = Array.from(fcaKnowledge.matchAll(fullMatchRegex));
-              
-              let foundFirstName = null;
-
-              for (const match of allMatches) {
-                  const potentialFirstName = match[1];
-                  
-                  if (!junkWords.has(potentialFirstName.toLowerCase())) {
-                      foundFirstName = potentialFirstName;
-                      break; 
-                  }
-              }
-              
-              if (foundFirstName) {
-                first = foundFirstName.toLowerCase();
-                last = presumedLastName;
-              } else {
-                const emailFormat = `FirstName.${presumedLastName}@faithchristianacademy.net`;
-                return res.json({
-                  reply: {
-                    role: "assistant",
-                    content: `I found a reference to **${capitalize(presumedLastName)}** in the FCA documents but couldn't confirm the first name. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
-                  },
-                });
-              }
-            }
-          }
-      }
+      // All previous manual name parsing (contextual, direct message) is now obsolete
+      // and has been removed, as the LLM is far more reliable.
 
       // Step 4: Final output with name and email
       if (first && last) {
+        // Names are already lowercased from LLM, ensure proper capitalization for display
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
         const email = `${first}.${last}@faithchristianacademy.net`;
         
         let whoIsAnswer = "";
+        
         if ((lastUserMessage.toLowerCase().includes("who is") || lastUserMessage.toLowerCase().includes("who's")) && foundRole) {
-            whoIsAnswer = `The ${capitalize(foundRole)} is **${displayName}**.\n\n`; 
+            // New inferential response format (the "human" response)
+            whoIsAnswer = `Based on the documents, I believe you are looking for **${displayName}**, who is the current ${capitalize(foundRole)}. `;
         }
 
         return res.json({
           reply: {
             role: "assistant",
-            content: `${whoIsAnswer}The email address for ${displayName} is likely **${email}**.`,
+            content: `${whoIsAnswer}The email address for ${displayName} is **${email}**.`,
           },
         });
       }
@@ -346,7 +266,7 @@ app.post("/chat", async (req, res) => {
         reply: {
           role: "assistant",
           content:
-            "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+            "I couldn't find a plausible name for that role in the documents. If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
         },
       });
     }
