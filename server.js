@@ -137,48 +137,87 @@ app.get("/", (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
-    const lastUserMessage =
-      userMessages[userMessages.length - 1]?.content || "";
+    const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
 
-    // 📧 Staff email shortcut (simple + reliable)
+    // 🧠 Name lookup in PDF summaries
+    const possibleNames = fcaKnowledge.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g) || [];
+    const cleanedMessage = lastUserMessage.toLowerCase();
+    const junkWords = new Set(["mr", "mrs", "ms", "miss", "coach", "dr", "pastor", "teacher", "principal"]);
+
+    let matchedName = null;
+
+    for (const name of possibleNames) {
+      const [first, last] = name.split(" ");
+      if (
+        cleanedMessage.includes(first.toLowerCase()) &&
+        cleanedMessage.includes(last.toLowerCase())
+      ) {
+        matchedName = { first, last };
+        break;
+      }
+    }
+
+    // 📧 Email shortcut using matched or extracted name
     if (/email/i.test(lastUserMessage)) {
-  const junkWords = [
-    "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-    "tell", "can", "someone", "send", "need", "get", "find", "contact", "info"
-  ];
+      let first = "", last = "";
 
-  const cleaned = lastUserMessage
-    // Remove titles
-    .replace(/\b(mr|mrs|ms|miss|coach|dr|teacher)\.?/gi, '')
-    // Remove junk words
-    .split(/\s+/)
-    .filter(word => !junkWords.includes(word.toLowerCase()))
-    .join(' ');
+      if (matchedName) {
+        first = matchedName.first;
+        last = matchedName.last;
+      } else {
+        // Extract first + last from message (case-insensitive)
+        const words = lastUserMessage.toLowerCase().split(/[^a-z]+/).filter(w => w && !junkWords.has(w));
+        if (words.length >= 2) {
+          [first, last] = words.slice(0, 2);
+        }
+      }
 
-  // Match remaining words as potential first/last name
-  const nameMatch = cleaned.match(/\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/);
+      if (first && last) {
+        const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
+        const displayName = `${first.charAt(0).toUpperCase() + first.slice(1)} ${last.charAt(0).toUpperCase() + last.slice(1)}`;
 
-  if (nameMatch) {
-    const first = nameMatch[1].toLowerCase();
-    const last = nameMatch[2].toLowerCase();
+        return res.json({
+          reply: {
+            role: "assistant",
+            content: `The email address for ${displayName} is likely **${email}**.`,
+          },
+        });
+      }
 
-    const email = `${first}.${last}@faithchristianacademy.net`;
-    return res.json({
-      reply: {
-        role: "assistant",
-        content: `The email address for ${capitalize(first)} ${capitalize(last)} is likely **${email}**.`,
-      },
+      return res.json({
+        reply: {
+          role: "assistant",
+          content:
+            "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+        },
+      });
+    }
+
+    // 🧠 Default Q&A mode with context
+    const systemPrompt = {
+      role: "system",
+      content:
+        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following information:\n\n" +
+        "📚 FCA Documents:\n" +
+        fcaKnowledge +
+        "\n\n📅 Calendar Events:\n" +
+        calendarText +
+        "\n\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
+    };
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [systemPrompt, ...userMessages],
     });
-  } else {
-    return res.json({
-      reply: {
-        role: "assistant",
-        content:
-          "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
-      },
-    });
+
+    let reply = completion.choices[0]?.message?.content?.trim() || "";
+
+    res.json({ reply: { role: "assistant", content: reply } });
+  } catch (err) {
+    console.error("❌ Error in /chat route:", err);
+    res.status(500).json({ error: "Server error: check console for stack trace." });
   }
-}
+});
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -216,6 +255,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
