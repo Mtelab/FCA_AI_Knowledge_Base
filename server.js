@@ -13,7 +13,7 @@ const pdfParse = require("pdf-parse");
 dotenv.config();
 const app = express();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
-const __dirname = path.dirname(fileURLToURL(import.meta.url));
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -396,3 +396,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
