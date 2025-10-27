@@ -140,16 +140,21 @@ app.post("/chat", async (req, res) => {
     const lastUserMessage =
       userMessages[userMessages.length - 1]?.content || "";
 
-    // 📧 Staff email shortcut (simple + reliable)
+    // 📧 Staff email shortcut (robust handling)
     if (/email/i.test(lastUserMessage)) {
-      // Match any first + last name, regardless of capitalization
-      const nameMatch = lastUserMessage.match(/([A-Za-z]+)\s+([A-Za-z]+)/);
-
+      // Remove question phrases like "what is", "do you know", etc.
+      const cleaned = lastUserMessage
+        .replace(/^(what|who|do|can|please|could|would|tell|give|show)\s+(is|you|me|the)?\s*/i, "")
+        .trim();
+    
+      // Match two alphabetic name words only
+      const nameMatch = cleaned.match(/^([A-Za-z]+)\s+([A-Za-z]+)$/);
+    
       if (nameMatch) {
         const first = nameMatch[1].toLowerCase();
         const last = nameMatch[2].toLowerCase();
         const email = `${first}.${last}@faithchristianacademy.net`;
-
+    
         return res.json({
           reply: {
             role: "assistant",
@@ -199,6 +204,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
