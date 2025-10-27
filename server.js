@@ -140,20 +140,33 @@ app.post("/chat", async (req, res) => {
     const lastUserMessage =
       userMessages[userMessages.length - 1]?.content || "";
 
-    // 📧 Staff email shortcut FIRST (before calling OpenAI)
-    if (
-      /email/i.test(lastUserMessage) &&
-      /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)
-    ) {
-      const nameMatch = lastUserMessage.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
+    // 📧 Staff email shortcut (improved matching)
+    if (/email/i.test(lastUserMessage)) {
+      // Try to detect names even if lowercase or missing titles
+      const nameMatch =
+        lastUserMessage.match(/(?:mr|mrs|ms|coach)?\.?\s*([a-z]+)\s+([a-z]+)/i) ||
+        lastUserMessage.match(/(?:mr|mrs|ms|coach)?\.?\s*([a-z]+)/i);
+    
       if (nameMatch) {
-        const first = nameMatch[1].toLowerCase();
-        const last = nameMatch[2].toLowerCase();
+        const first = nameMatch[1]?.toLowerCase() || "";
+        const last = nameMatch[2]?.toLowerCase() || "";
+    
+        // If only one name (e.g., "Hobbs")
+        if (!last && first) {
+          return res.json({
+            reply: {
+              role: "assistant",
+              content: `The email address for ${first.charAt(0).toUpperCase() + first.slice(1)} is likely **${first}@faithchristianacademy.net**, though full names usually follow the format **FirstName.LastName@faithchristianacademy.net**.`,
+            },
+          });
+        }
+    
+        // Standard first + last name
         const email = `${first}.${last}@faithchristianacademy.net`;
         return res.json({
           reply: {
             role: "assistant",
-            content: `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`,
+            content: `The email address for ${first.charAt(0).toUpperCase() + first.slice(1)} ${last.charAt(0).toUpperCase() + last.slice(1)} is likely **${email}**.`,
           },
         });
       } else {
@@ -199,6 +212,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
