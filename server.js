@@ -151,12 +151,14 @@ app.post("/chat", async (req, res) => {
     const systemPrompt = {
       role: "system",
       content:
-        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents:\n" +
+        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following information:\n\n" +
+        "📚 FCA Documents:\n" +
         fcaKnowledge +
-        "\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
+        "\n\n📅 Calendar Events:\n" +
+        calendarText +
+        "\n\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
     };
 
-    // ask OpenAI for a reply
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [systemPrompt, ...userMessages],
@@ -181,7 +183,6 @@ app.post("/chat", async (req, res) => {
       }
     }
 
-    // send reply to frontend
     res.json({ reply: { role: "assistant", content: reply } });
   } catch (err) {
     console.error("❌ Error in /chat route:", err);
@@ -195,6 +196,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
