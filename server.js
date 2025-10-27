@@ -142,13 +142,8 @@ app.post("/chat", async (req, res) => {
 
     // 📧 Staff email shortcut (robust handling)
     if (/email/i.test(lastUserMessage)) {
-      // Remove question phrases like "what is", "do you know", etc.
-      const cleaned = lastUserMessage
-        .replace(/^(what|who|do|can|please|could|would|tell|give|show)\s+(is|you|me|the)?\s*/i, "")
-        .trim();
-    
-      // Match two alphabetic name words only
-      const nameMatch = cleaned.match(/^([A-Za-z]+)\s+([A-Za-z]+)$/);
+      // Try to extract a full name (anywhere in the message)
+      const nameMatch = lastUserMessage.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/);
     
       if (nameMatch) {
         const first = nameMatch[1].toLowerCase();
@@ -204,6 +199,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
