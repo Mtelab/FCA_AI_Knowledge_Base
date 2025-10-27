@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { DateTime } from "luxon";
 import ical from "node-ical";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -78,10 +79,6 @@ async function loadPDFs() {
     console.error("⚠️ Error loading PDF files:", err);
   }
 }
-
-import { DateTime } from "luxon";
-import ical from "ical";
-import fetch from "node-fetch";
 
 let calendarText = "";
 
@@ -193,6 +190,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
