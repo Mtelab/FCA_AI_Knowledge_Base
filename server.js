@@ -12,7 +12,7 @@ const pdfParse = require("pdf-parse");
 
 dotenv.config();
 const app = express();
-// NOTE: Use 'gpt-4o-mini' or 'gpt-3.5-turbo' for cost and speed for summarization
+// NOTE: Using a current stable model name is best practice
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -148,14 +148,18 @@ app.post("/chat", async (req, res) => {
 
     // 📧 Email shortcut logic
     if (/email/i.test(lastUserMessage)) {
+      // Extended junk words set to catch capitalized versions too
       const junkWords = new Set([
         "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "mr", "mrs", "ms",
-        "miss", "coach", "dr", "teacher", "pastor", "principal" 
+        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", 
+        "mr", "mrs", "ms", "miss", "coach", "dr", "teacher", "pastor", "principal",
+        "Mr", "Mrs", "Ms", "Miss", "Coach", "Dr", "Teacher", "Pastor", "Principal" // Added capitalized titles
       ]);
 
       // Step 1: Clean the message to extract potential name words
-      const words = lastUserMessage.toLowerCase().split(/[^a-z]+/).filter(w => w && !junkWords.has(w));
+      // Note: We don't use .toLowerCase() here for the words array 
+      // because the advanced lookup relies on the casing from the knowledge base.
+      const words = lastUserMessage.split(/[^a-zA-Z]+/).filter(w => w && !junkWords.has(w));
       let first = "", last = "";
       
       // Step 2: Attempt to extract a first and last name from the message itself
@@ -174,35 +178,41 @@ app.post("/chat", async (req, res) => {
           const presumedLastName = capitalize(singleWord);
           
           // 🚀 ADVANCED LOGIC: Try to find the first name in the FCA Knowledge
-          // We look for any word starting with a capital letter followed by the presumed last name.
-          // This relies on the summary step providing names like "John Smith"
+          // We look for any capitalized word followed by the presumed last name.
           const fullMatchRegex = new RegExp(`\\b([A-Z][a-z]+)\\s+${presumedLastName}\\b`, 'i');
           const fullMatch = fcaKnowledge.match(fullMatchRegex);
           
           if (fullMatch && fullMatch[1]) {
-            // Success! We found a likely first name in the document
-            first = fullMatch[1];
-            last = presumedLastName;
+            // Get the extracted potential first name
+            const potentialFirstName = fullMatch[1];
             
-            const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
-            const displayName = `${capitalize(first)} ${capitalize(last)}`;
-            
-            return res.json({
-                reply: {
-                    role: "assistant",
-                    content: `Based on the documents, the name is likely **${displayName}**. The email address is **${email}**.`,
-                },
-            });
-          } else {
-            // Fallback: If the last name is confirmed but the first name couldn't be extracted
-            const emailFormat = `FirstName.${presumedLastName.toLowerCase()}@faithchristianacademy.net`;
-            return res.json({
-              reply: {
-                role: "assistant",
-                content: `I found a reference to **${presumedLastName}** in the FCA documents. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
-              },
-            });
+            // 🛑 CRITICAL NEW STEP: Check if the potential first name is actually a title/junk word
+            if (!junkWords.has(potentialFirstName)) {
+              // Success! It's a real name (e.g., "John")
+              first = potentialFirstName;
+              last = presumedLastName;
+              
+              const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
+              const displayName = `${capitalize(first)} ${capitalize(last)}`;
+              
+              return res.json({
+                  reply: {
+                      role: "assistant",
+                      content: `Based on the documents, the name is likely **${displayName}**. The email address is **${email}**.`,
+                  },
+              });
+            }
+            // If the potential first name is a junk word (like 'Coach'), it falls to the fallback below.
           }
+          
+          // Fallback: If the last name is confirmed but the first name couldn't be reliably extracted (or was a title)
+          const emailFormat = `FirstName.${presumedLastName.toLowerCase()}@faithchristianacademy.net`;
+          return res.json({
+            reply: {
+              role: "assistant",
+              content: `I found a reference to **${presumedLastName}** in the FCA documents. I couldn't confirm the first name. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
+            },
+          });
         }
         // If single word is NOT found in knowledge, it falls through to the generic fallback.
       }
