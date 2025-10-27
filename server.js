@@ -14,6 +14,7 @@ dotenv.config();
 const app = express();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "defaultdomain.net"; // Use configurable domain
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -30,7 +31,7 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// 📘 Load PDFs from /data (Keeping courtesy titles intact)
+// 📘 Load PDFs from /data 
 async function loadPDFs() {
   try {
     const files = fs.readdirSync(dataDir);
@@ -55,7 +56,7 @@ async function loadPDFs() {
               messages: [
                 {
                   role: "system",
-                  // Instruction to the AI to extract and format cleanly, retaining any titles present in the source.
+                  // Ensure names and titles are extracted cleanly, retaining any titles present.
                   content:
                     "Extract all staff names and roles from this FCA document. Format each item as 'Name – Title'. Keep it factual and concise. Place each name/title pair on a new line. Do not include any introductory or concluding text."
                 },
@@ -89,14 +90,14 @@ async function loadPDFs() {
 
 // 🗓️ Load Google Calendar URLs
 async function loadAllCalendars() {
-  if (!process.env.CALENDAR_URLS) return;
+  try {
+    if (!process.env.CALENDAR_URLS) return;
 
-  const urls = process.env.CALENDAR_URLS.split(",").map(u => u.trim());
-  const now = DateTime.now().setZone("America/New_York");
-  let combined = "";
+    const urls = process.env.CALENDAR_URLS.split(",").map(u => u.trim());
+    const now = DateTime.now().setZone("America/New_York");
+    let combined = "";
 
-  for (const url of urls) {
-    try {
+    for (const url of urls) {
       const res = await fetch(url);
       const data = await res.text();
       const events = ical.parseICS(data);
@@ -116,13 +117,13 @@ async function loadAllCalendars() {
         const location = ev.location ? ` at ${ev.location}` : "";
         combined += `\n${ev.summary} — ${timeStr}${location}`;
       }
-    } catch (err) {
-      console.warn("⚠️ Calendar load failed:", url, err.message);
     }
-  }
 
-  calendarText = combined || "No upcoming events found.";
-  console.log("✅ Calendars loaded.");
+    calendarText = combined || "No upcoming events found.";
+    console.log("✅ Calendars loaded.");
+  } catch (err) {
+    console.warn("⚠️ Calendar load failed:", err.message);
+  }
 }
 
 // 🚀 Initial load
@@ -138,7 +139,7 @@ app.get("/", (req, res) => {
 });
 
 
-// 🛑 Define a list of full job titles to search for in a direct question
+// 🛑 Define a list of full job titles to search for in a direct question (Only for detection)
 const ROLE_KEYWORDS = [
     "head of school", 
     "business administrator", 
@@ -149,21 +150,24 @@ const ROLE_KEYWORDS = [
     "teacher", 
     "coach", 
     "director", 
-    "counselor"
+    "counselor",
+    "secondary principal",
+    "elementary principal"
 ];
 
 /**
- * Uses the LLM to reliably extract a clean first and last name for a given role.
- * NOTE: Role substitution logic (e.g., Principal -> Secondary Principal) is handled outside this function.
+ * Uses the LLM to reliably extract a clean first and last name for a given role, 
+ * handling ambiguity dynamically within the prompt.
  */
 async function findNameByRoleViaLLM(role) {
-    const prompt = `From the following FCA staff data, find the full first and last name of the person who holds the exact role: "${role}".
+    const prompt = `From the following staff data, find the full first and last name of the person who holds the role: "${role}".
 
     **CRITICAL INSTRUCTION:**
-    1.  Search for the person who holds the **exact title**: "${role}".
-    2.  Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
-    3.  The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
-    4.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO person is found for the exact title, respond ONLY with {"first_name": "", "last_name": ""}.
+    1.  Search for the person who holds the exact title: "${role}".
+    2.  If the exact title is not found, you MUST return the name of the person who holds the most closely related administrative role that contains the word "${role}". For example, if asked for "Principal" and the data only has "Secondary Principal" and "Elementary Principal", choose the name associated with the most senior-sounding administrative title.
+    3.  Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
+    4.  The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
+    5.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO plausible name can be found, respond ONLY with {"first_name": "", "last_name": ""}.
 
     Staff Data:
     ---
@@ -182,7 +186,7 @@ async function findNameByRoleViaLLM(role) {
         const jsonString = completion.choices[0]?.message?.content?.trim();
         const result = JSON.parse(jsonString);
 
-        // Basic validation after LLM returns the data
+        // Basic validation
         const first = result.first_name || '';
         const last = result.last_name || '';
 
@@ -190,7 +194,6 @@ async function findNameByRoleViaLLM(role) {
             !first.toLowerCase().includes('name') && 
             !last.toLowerCase().includes('title')
             ) {
-            // NOTE: We return only the clean first and last names
             return [
                 first.toLowerCase(), 
                 last.toLowerCase()
@@ -214,8 +217,9 @@ app.post("/chat", async (req, res) => {
       
       let first = "", last = ""; 
       let foundRole = null; 
+      let nameByRole = null;
 
-      // 🛑 Step 1: Detect Role
+      // 🛑 Step 1: Detect Role and attempt lookup
       if (/(who is|who's|his|her)/i.test(lastUserMessage)) {
           const lowerMessage = lastUserMessage.toLowerCase();
           
@@ -226,47 +230,67 @@ app.post("/chat", async (req, res) => {
               }
           }
           
-          // 🛑 Step 2: Use application code to map ambiguous roles to exact titles
+          // 🛑 Step 2: Pass the found role to the LLM for extraction and dynamic substitution
           if (foundRole) {
-              
-              let searchRole = foundRole;
-              if (foundRole.toLowerCase() === "business administrator") {
-                  searchRole = "Business Manager";
-              } else if (foundRole.toLowerCase() === "principal") {
-                  // Use the exact title from the document to ensure a match
-                  searchRole = "Secondary Principal/Director of Athletics"; 
-              } else if (foundRole.toLowerCase() === "elementary director") {
-                  searchRole = "Elementary Principal";
-              }
-              
-              // Pass the guaranteed exact title to the LLM
-              const nameByRole = await findNameByRoleViaLLM(searchRole); 
+              nameByRole = await findNameByRoleViaLLM(foundRole); 
               if (nameByRole) {
-                  // Unpack the return structure: [first, last]
                   [first, last] = nameByRole; 
               }
           }
       }
+
+      // 🛑 Step 3: Direct Name Extraction if role lookup failed (e.g., "Jeffrey Bakers email")
+      if (!nameByRole || (first === "" && last === "")) {
+        
+        // Use LLM to extract the name directly from the query
+        const directNamePrompt = `Extract the first name and last name from the following user query. The query may contain possessive forms (e.g., "Jeffrey Bakers"). The names must be in lowercase. Respond ONLY with a JSON object. If no full name is clearly present, respond with the empty structure.
+        
+        User Query: "${lastUserMessage}"
+        `;
+        
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: directNamePrompt }],
+                response_format: { type: "json_object" }, 
+                temperature: 0.0
+            });
+
+            const jsonString = completion.choices[0]?.message?.content?.trim();
+            const result = JSON.parse(jsonString);
+
+            // Populate first and last if extraction was successful
+            if (result.first_name && result.last_name) {
+                first = result.first_name.toLowerCase();
+                last = result.last_name.toLowerCase();
+            }
+        } catch (err) {
+            console.error("⚠️ LLM Direct Name Extraction Failed:", err.message);
+        }
+      }
       
       // Step 4: Final output with name and email
       if (first && last) {
-        // Construct display name WITHOUT courtesy title (we removed the prefix logic for stability)
+        // Construct display name 
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
         
-        // Email remains clean (first.last@domain)
-        const email = `${first}.${last}@faithchristianacademy.net`;
+        // Email uses the configurable domain
+        const email = `${first}.${last}@${EMAIL_DOMAIN}`;
         
         let whoIsAnswer = "";
         
-        if ((lastUserMessage.toLowerCase().includes("who is") || lastUserMessage.toLowerCase().includes("who's")) && foundRole) {
-            // Inferential response format (the "human" response)
-            whoIsAnswer = `Based on the documents, I believe you are looking for **${displayName}**, who is the current ${capitalize(foundRole)}. `;
+        // Use a generic description if the name was directly asked for
+        if (foundRole) {
+            whoIsAnswer = `Based on the documents, the email for the ${capitalize(foundRole)} is: **${email}**. The person is ${displayName}.`;
+        } else {
+            // Simple response for direct name queries (e.g., Jeffrey Baker)
+            whoIsAnswer = `The email address for **${displayName}** is: **${email}**.`;
         }
 
         return res.json({
           reply: {
             role: "assistant",
-            content: `${whoIsAnswer}The email address for ${displayName} is **${email}**.`,
+            content: whoIsAnswer,
           },
         });
       }
@@ -276,7 +300,7 @@ app.post("/chat", async (req, res) => {
         reply: {
           role: "assistant",
           content:
-            "I couldn't find a plausible name for that role in the documents. If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+            `I couldn't find a plausible name for that role or person in the documents. If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@${EMAIL_DOMAIN}).`,
         },
       });
     }
