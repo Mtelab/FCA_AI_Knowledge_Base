@@ -140,38 +140,47 @@ app.post("/chat", async (req, res) => {
     const lastUserMessage =
       userMessages[userMessages.length - 1]?.content || "";
 
-    if (/email/i.test(lastUserMessage)) {
-    // Try to find two words that look like names
-    const nameMatch = lastUserMessage.match(/\b([a-z]+)\s+([a-z]+)\b/i);
-  
-    // Check for common question phrases to avoid false matches
-    const questionWords = ['what', 'who', 'where', 'when', 'why', 'how'];
-  
-    if (
-      nameMatch &&
-      !questionWords.includes(nameMatch[1].toLowerCase()) &&
-      !questionWords.includes(nameMatch[2].toLowerCase())
-    ) {
-      const first = nameMatch[1].toLowerCase();
-      const last = nameMatch[2].toLowerCase();
-      const email = `${first}.${last}@faithchristianacademy.net`;
-  
-      return res.json({
-        reply: {
-          role: "assistant",
-          content: `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`,
-        },
-      });
-    } else {
-      return res.json({
-        reply: {
-          role: "assistant",
-          content:
-            "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
-        },
-      });
-    }
+    // 📧 Staff email shortcut (simple + reliable)
+if (/email/i.test(lastUserMessage)) {
+  const words = lastUserMessage
+    .replace(/[^\w\s]/g, "") // remove punctuation
+    .split(/\s+/)
+    .filter(w => w.length > 1);
+
+  // remove generic intros like “what is”, “do you know”, etc.
+  const garbageWords = new Set([
+    "what", "is", "the", "email", "address", "of", "for", "do", "you", "know", "give", "me", "tell"
+  ]);
+  const filtered = words.filter(w => !garbageWords.has(w.toLowerCase()));
+
+  // now look for the last two valid words as name
+  if (filtered.length >= 2) {
+    const first = filtered[filtered.length - 2].toLowerCase();
+    const last = filtered[filtered.length - 1].toLowerCase();
+    const email = `${first}.${last}@faithchristianacademy.net`;
+
+    return res.json({
+      reply: {
+        role: "assistant",
+        content: `The email address for ${capitalize(first)} ${capitalize(last)} is likely **${email}**.`,
+      },
+    });
   }
+
+  // fallback if name isn't detected
+  return res.json({
+    reply: {
+      role: "assistant",
+      content:
+        "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+    },
+  });
+}
+
+// helper to capitalize names
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
     // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A
     const systemPrompt = {
@@ -205,6 +214,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
