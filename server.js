@@ -163,6 +163,7 @@ async function findNameByRoleViaLLM(role) {
     1.  First, search for the person who holds the exact title: "${role}".
     2.  If the exact title is not found, you MUST return the name of the person who holds the most closely related administrative role, using this hierarchy of substitution:
         * If the exact role is "Business Administrator", substitute the name of the **"Business Manager"**.
+        * If the exact role is "Principal", substitute the name of the **"Secondary Principal"**.
         * If the exact role is "Elementary Director", substitute the name of the **"Elementary Principal"**.
         * For any other role, substitute the name of the next highest administrative staff member listed.
     3.  When returning the name, **IGNORE AND DO NOT INCLUDE** any courtesy titles (like Mr., Mrs., Dr., etc.) in the 'first_name' or 'last_name' fields.
