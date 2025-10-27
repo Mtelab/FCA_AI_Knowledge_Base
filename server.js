@@ -153,17 +153,17 @@ const ROLE_KEYWORDS = [
 ];
 
 /**
- * Uses the LLM to reliably extract a title prefix (Mr., Dr.) and clean first/last name for a given role.
- * NOTE: Role substitution logic (e.g., Principal -> Secondary Principal) is now handled outside this function.
+ * Uses the LLM to reliably extract a clean first and last name for a given role.
+ * NOTE: Role substitution logic (e.g., Principal -> Secondary Principal) is handled outside this function.
  */
 async function findNameByRoleViaLLM(role) {
-    const prompt = `From the following FCA staff data, find the title prefix (e.g., Mr., Mrs., Dr.) and the full first and last name of the person who holds the role: "${role}".
+    const prompt = `From the following FCA staff data, find the full first and last name of the person who holds the exact role: "${role}".
 
     **CRITICAL INSTRUCTION:**
     1.  Search for the person who holds the **exact title**: "${role}".
-    2.  Extract the courtesy title (Mr., Mrs., Ms., Dr., etc.) into the 'title_prefix' field. If no title is present, use an empty string for 'title_prefix'.
-    3.  The 'first_name' and 'last_name' fields must only contain the names, **stripped of any courtesy titles**.
-    4.  Respond ONLY with a JSON object containing the fields "title_prefix", "first_name" and "last_name". If NO person is found for the exact title, respond ONLY with {"title_prefix": "", "first_name": "", "last_name": ""}.
+    2.  Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
+    3.  The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
+    4.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO person is found for the exact title, respond ONLY with {"first_name": "", "last_name": ""}.
 
     Staff Data:
     ---
@@ -183,7 +183,6 @@ async function findNameByRoleViaLLM(role) {
         const result = JSON.parse(jsonString);
 
         // Basic validation after LLM returns the data
-        const prefix = result.title_prefix || '';
         const first = result.first_name || '';
         const last = result.last_name || '';
 
@@ -191,8 +190,8 @@ async function findNameByRoleViaLLM(role) {
             !first.toLowerCase().includes('name') && 
             !last.toLowerCase().includes('title')
             ) {
+            // NOTE: We return only the clean first and last names
             return [
-                prefix, // Title prefix included
                 first.toLowerCase(), 
                 last.toLowerCase()
             ];
@@ -213,7 +212,7 @@ app.post("/chat", async (req, res) => {
     // 📧 Email shortcut logic
     if (/(email|contact)/i.test(lastUserMessage)) {
       
-      let prefix = "", first = "", last = "";
+      let first = "", last = ""; 
       let foundRole = null; 
 
       // 🛑 Step 1: Detect Role
@@ -234,7 +233,7 @@ app.post("/chat", async (req, res) => {
               if (foundRole.toLowerCase() === "business administrator") {
                   searchRole = "Business Manager";
               } else if (foundRole.toLowerCase() === "principal") {
-                  // This is the full, exact title the LLM needs to find
+                  // Use the exact title from the document to ensure a match
                   searchRole = "Secondary Principal/Director of Athletics"; 
               } else if (foundRole.toLowerCase() === "elementary director") {
                   searchRole = "Elementary Principal";
@@ -243,17 +242,16 @@ app.post("/chat", async (req, res) => {
               // Pass the guaranteed exact title to the LLM
               const nameByRole = await findNameByRoleViaLLM(searchRole); 
               if (nameByRole) {
-                  // Unpack the return structure: [prefix, first, last]
-                  [prefix, first, last] = nameByRole; 
+                  // Unpack the return structure: [first, last]
+                  [first, last] = nameByRole; 
               }
           }
       }
       
       // Step 4: Final output with name and email
       if (first && last) {
-        // Construct display name with courtesy title (e.g., "Dr. Brian Hobbs")
-        const displayPrefix = prefix ? `${prefix} ` : '';
-        const displayName = `${displayPrefix}${capitalize(first)} ${capitalize(last)}`;
+        // Construct display name WITHOUT courtesy title (we removed the prefix logic for stability)
+        const displayName = `${capitalize(first)} ${capitalize(last)}`;
         
         // Email remains clean (first.last@domain)
         const email = `${first}.${last}@faithchristianacademy.net`;
