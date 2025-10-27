@@ -141,9 +141,17 @@ app.post("/chat", async (req, res) => {
       userMessages[userMessages.length - 1]?.content || "";
 
     if (/email/i.test(lastUserMessage)) {
+    // Try to find two words that look like names
     const nameMatch = lastUserMessage.match(/\b([a-z]+)\s+([a-z]+)\b/i);
   
-    if (nameMatch) {
+    // Check for common question phrases to avoid false matches
+    const questionWords = ['what', 'who', 'where', 'when', 'why', 'how'];
+  
+    if (
+      nameMatch &&
+      !questionWords.includes(nameMatch[1].toLowerCase()) &&
+      !questionWords.includes(nameMatch[2].toLowerCase())
+    ) {
       const first = nameMatch[1].toLowerCase();
       const last = nameMatch[2].toLowerCase();
       const email = `${first}.${last}@faithchristianacademy.net`;
@@ -197,6 +205,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
