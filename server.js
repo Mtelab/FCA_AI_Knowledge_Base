@@ -142,40 +142,47 @@ app.post("/chat", async (req, res) => {
 
     // 📧 Staff email shortcut (simple + reliable)
     if (/email/i.test(lastUserMessage)) {
-      // Strip common title prefixes so we don’t accidentally use them as names
-      const cleaned = lastUserMessage
-        .replace(/\b(mr|mrs|ms|miss|coach|dr|teacher)\.?/gi, '')
-        .trim();
-    
-      // Now match first and last name (case-insensitive)
-      const nameMatch = cleaned.match(/\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/);
-    
-      if (nameMatch) {
-        const first = nameMatch[1].toLowerCase();
-        const last = nameMatch[2].toLowerCase();
-    
-        const email = `${first}.${last}@faithchristianacademy.net`;
-        return res.json({
-          reply: {
-            role: "assistant",
-            content: `The email address for ${capitalize(first)} ${capitalize(last)} is likely **${email}**.`,
-          },
-        });
-      } else {
-        return res.json({
-          reply: {
-            role: "assistant",
-            content:
-              "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
-          },
-        });
-      }
-    }
-    
-    // helper to capitalize names
-    function capitalize(str) {
-      return str.charAt(0).toUpperCase() + str.slice(1);
-    }
+  const junkWords = [
+    "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
+    "tell", "can", "someone", "send", "need", "get", "find", "contact", "info"
+  ];
+
+  const cleaned = lastUserMessage
+    // Remove titles
+    .replace(/\b(mr|mrs|ms|miss|coach|dr|teacher)\.?/gi, '')
+    // Remove junk words
+    .split(/\s+/)
+    .filter(word => !junkWords.includes(word.toLowerCase()))
+    .join(' ');
+
+  // Match remaining words as potential first/last name
+  const nameMatch = cleaned.match(/\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/);
+
+  if (nameMatch) {
+    const first = nameMatch[1].toLowerCase();
+    const last = nameMatch[2].toLowerCase();
+
+    const email = `${first}.${last}@faithchristianacademy.net`;
+    return res.json({
+      reply: {
+        role: "assistant",
+        content: `The email address for ${capitalize(first)} ${capitalize(last)} is likely **${email}**.`,
+      },
+    });
+  } else {
+    return res.json({
+      reply: {
+        role: "assistant",
+        content:
+          "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+      },
+    });
+  }
+}
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
     // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A
     const systemPrompt = {
@@ -209,6 +216,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
