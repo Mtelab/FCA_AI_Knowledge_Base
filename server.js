@@ -27,12 +27,10 @@ let calendarText = "";
 // Helper Function: Defined globally
 function capitalize(str) {
   if (!str) return "";
-  // Handles multiple words, ensuring names like 'van der Meer' or 'd'Angelo' 
-  // are handled correctly, but simple capitalization is fine for our email
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// 📘 Load PDFs from /data
+// 📘 Load PDFs from /data (Keeping courtesy titles intact)
 async function loadPDFs() {
   try {
     const files = fs.readdirSync(dataDir);
@@ -57,7 +55,7 @@ async function loadPDFs() {
               messages: [
                 {
                   role: "system",
-                  // System prompt to ensure clean Name - Role formatting, as requested
+                  // Instruction to the AI to extract and format cleanly, retaining any titles present in the source.
                   content:
                     "Extract all staff names and roles from this FCA document. Format each item as 'Name – Title'. Keep it factual and concise. Place each name/title pair on a new line. Do not include any introductory or concluding text."
                 },
@@ -66,10 +64,10 @@ async function loadPDFs() {
             });
 
             const cleaned = summary.choices?.[0]?.message?.content?.trim();
+            
             if (cleaned) {
-              fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
-              // 🛑 LOGGING ROLES AND NAMES (as requested in first prompt)
-              console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`);
+                fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
+                console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`);
             } else {
               fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
             }
@@ -156,18 +154,19 @@ const ROLE_KEYWORDS = [
 
 /**
  * Uses the LLM to reliably extract a first and last name for a given role from the knowledge base, 
- * including inferring the best substitute if the exact role is missing (the "human" approach).
- * This replaces all brittle regex and junk filtering.
- * @param {string} role - The job role to search for (e.g., "business administrator").
- * @returns {Promise<Array|null>} - A Promise resolving to [FirstName, LastName] (lowercase) or null.
+ * with a forced substitution/inference for missing roles.
  */
 async function findNameByRoleViaLLM(role) {
     const prompt = `From the following FCA staff data, find the full first and last name of the person who holds the role: "${role}".
 
-    **INSTRUCTION:**
+    **CRITICAL INSTRUCTION:**
     1.  First, search for the person who holds the exact title: "${role}".
-    2.  If the exact title is not found, use your general knowledge to infer the name of the person who holds the closest, most related, or most similar administrative role (e.g., if "Business Administrator" is missing, return the "Business Manager"; if "Elementary Director" is missing, return the "Elementary Principal").
-    3.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If a plausible name cannot be found, respond ONLY with {"first_name": "", "last_name": ""}.
+    2.  If the exact title is not found, you MUST return the name of the person who holds the most closely related administrative role, using this hierarchy of substitution:
+        * If the exact role is "Business Administrator", substitute the name of the **"Business Manager"**.
+        * If the exact role is "Elementary Director", substitute the name of the **"Elementary Principal"**.
+        * For any other role, substitute the name of the next highest administrative staff member listed.
+    3.  When returning the name, **IGNORE AND DO NOT INCLUDE** any courtesy titles (like Mr., Mrs., Dr., etc.) in the 'first_name' or 'last_name' fields.
+    4.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO plausible substitute name can be found in the data, respond ONLY with {"first_name": "", "last_name": ""}.
 
     Staff Data:
     ---
@@ -186,13 +185,14 @@ async function findNameByRoleViaLLM(role) {
         const jsonString = completion.choices[0]?.message?.content?.trim();
         const result = JSON.parse(jsonString);
 
-        // Filter out any garbage words the LLM might hallucinate as a name
+        // Basic validation after LLM returns the data
         const first = result.first_name || '';
         const last = result.last_name || '';
 
         if (first.length > 1 && last.length > 1 && 
             !first.toLowerCase().includes('name') && 
-            !last.toLowerCase().includes('title')) {
+            !last.toLowerCase().includes('title')
+            ) {
             return [
                 first.toLowerCase(), 
                 last.toLowerCase()
@@ -237,9 +237,6 @@ app.post("/chat", async (req, res) => {
           }
       }
       
-      // All previous manual name parsing (contextual, direct message) is now obsolete
-      // and has been removed, as the LLM is far more reliable.
-
       // Step 4: Final output with name and email
       if (first && last) {
         // Names are already lowercased from LLM, ensure proper capitalization for display
@@ -249,7 +246,7 @@ app.post("/chat", async (req, res) => {
         let whoIsAnswer = "";
         
         if ((lastUserMessage.toLowerCase().includes("who is") || lastUserMessage.toLowerCase().includes("who's")) && foundRole) {
-            // New inferential response format (the "human" response)
+            // Inferential response format (the "human" response)
             whoIsAnswer = `Based on the documents, I believe you are looking for **${displayName}**, who is the current ${capitalize(foundRole)}. `;
         }
 
