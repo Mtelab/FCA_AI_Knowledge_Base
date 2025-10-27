@@ -140,6 +140,34 @@ app.post("/chat", async (req, res) => {
     const lastUserMessage =
       userMessages[userMessages.length - 1]?.content || "";
 
+    // 📧 Staff email shortcut FIRST (before calling OpenAI)
+    if (
+      /email/i.test(lastUserMessage) &&
+      /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)
+    ) {
+      const nameMatch = lastUserMessage.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
+      if (nameMatch) {
+        const first = nameMatch[1].toLowerCase();
+        const last = nameMatch[2].toLowerCase();
+        const email = `${first}.${last}@faithchristianacademy.net`;
+        return res.json({
+          reply: {
+            role: "assistant",
+            content: `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`,
+          },
+        });
+      } else {
+        return res.json({
+          reply: {
+            role: "assistant",
+            content:
+              "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+          },
+        });
+      }
+    }
+
+    // 🧠 Otherwise, continue normally to OpenAI
     const systemPrompt = {
       role: "system",
       content:
@@ -158,23 +186,6 @@ app.post("/chat", async (req, res) => {
 
     let reply = completion.choices[0]?.message?.content?.trim() || "";
 
-    // 📧 Staff email shortcut
-    if (
-      /email/i.test(lastUserMessage) &&
-      /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)
-    ) {
-      const nameMatch = lastUserMessage.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
-      if (nameMatch) {
-        const first = nameMatch[1].toLowerCase();
-        const last = nameMatch[2].toLowerCase();
-        const email = `${first}.${last}@faithchristianacademy.net`;
-        reply = `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`;
-      } else {
-        reply =
-          "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).";
-      }
-    }
-
     res.json({ reply: { role: "assistant", content: reply } });
   } catch (err) {
     console.error("❌ Error in /chat route:", err);
@@ -188,6 +199,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
