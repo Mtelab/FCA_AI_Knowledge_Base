@@ -80,8 +80,6 @@ async function loadPDFs() {
   }
 }
 
-let calendarText = "";
-
 // 🗓️ Load Google Calendar URLs from environment variable
 async function loadAllCalendars() {
   if (!process.env.CALENDAR_URLS) return;
@@ -190,6 +188,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
