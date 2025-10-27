@@ -144,8 +144,8 @@ app.get("/", (req, res) => {
 // 🛑 Define the master list of junk words for filtering (all lowercase)
 const MASTER_JUNK_WORDS = new Set([
   // General filler/question words
-  "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an",
+  "what", "is", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
+  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an", "i", "apologize",
   // Titles/Salutations/Roles
   "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
   "director", "head", "administrator", "business",
@@ -157,11 +157,12 @@ const MASTER_JUNK_WORDS = new Set([
 
 /**
  * Searches the message history for the most recently mentioned full name.
+ * 💡 Logic is fully case-insensitive due to regex and MASTER_JUNK_WORDS set.
  * @param {Array} messages - The conversation message history.
  * @returns {Array|null} - An array [FirstName, LastName] (capitalized) or null.
  */
 function findContextualName(messages) {
-    // Regex to find two words separated by a space, allowing for mixed case (e.g., "Jeffrey Baker" or "jeffrey baker")
+    // Regex finds any two words separated by a space, regardless of case
     const namePattern = /\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/g; 
     
     // Iterate backward from the second-to-last message (0-index)
@@ -199,16 +200,21 @@ app.post("/chat", async (req, res) => {
     const junkWords = MASTER_JUNK_WORDS;
 
     // 📧 Email shortcut logic
-    if (/email|his|her/i.test(lastUserMessage)) {
+    // 🛑 CRITICAL FIX: Only trigger the email lookup if "email" or "contact" is explicitly in the message.
+    if (/(email|contact)/i.test(lastUserMessage)) {
       
       let first = "", last = "";
       
-      // 🛑 Step 1: Check conversation history for a context name
-      const contextName = findContextualName(userMessages);
-      if (contextName) {
-          [first, last] = contextName;
-      } else {
-          // Step 2: Fallback to cleaning the last message (original logic)
+      // 🛑 Step 1: Check conversation history for a context name (if "his" or "her" is used in the current message)
+      if (/(his|her)/i.test(lastUserMessage)) {
+          const contextName = findContextualName(userMessages);
+          if (contextName) {
+              [first, last] = contextName;
+          }
+      }
+      
+      // Step 2: Fallback to cleaning the last message (original logic)
+      if (!first) {
           // Extract words and convert to lowercase for filtering
           const rawWords = lastUserMessage.split(/[^a-zA-Z]+/).filter(w => w);
           const words = rawWords
