@@ -140,33 +140,50 @@ app.get("/", (req, res) => {
   res.status(200).send("✅ FCA Assistant backend is running.");
 });
 
-// 💡 NEW HELPER FUNCTION TO SEARCH CONTEXT
+
+// 🛑 Define the master list of junk words for filtering (all lowercase)
+const MASTER_JUNK_WORDS = new Set([
+  // General filler/question words
+  "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
+  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an",
+  // Titles/Salutations/Roles
+  "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
+  "director", "head", "administrator", "business",
+  // Organizational Names (to avoid matching "Faith Christian" as a name)
+  "faith", "christian", "academy", "school", "to", "at", 
+  // Common short prepositions/articles often part of titles
+  "in", "on", "by", "from"
+]);
+
 /**
  * Searches the message history for the most recently mentioned full name.
  * @param {Array} messages - The conversation message history.
- * @returns {Array|null} - An array [FirstName, LastName] or null.
+ * @returns {Array|null} - An array [FirstName, LastName] (capitalized) or null.
  */
 function findContextualName(messages) {
-    // Regex to find two capitalized words separated by a space (e.g., "Jeffrey Baker")
-    const namePattern = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g; 
+    // Regex to find two words separated by a space, allowing for mixed case (e.g., "Jeffrey Baker" or "jeffrey baker")
+    const namePattern = /\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/g; 
     
-    // Titles to ignore when extracted from the document
-    const junkWords = new Set(["Mr", "Mrs", "Ms", "Miss", "Dr", "Teacher", "Pastor", "Principal", "Coach"]);
-
     // Iterate backward from the second-to-last message (0-index)
     for (let i = messages.length - 2; i >= 0; i--) {
         const content = messages[i]?.content || "";
         
-        // Find all two-word names in the message
         let match;
+        // Reset the regex state for each new string
+        namePattern.lastIndex = 0; 
+        
         while ((match = namePattern.exec(content)) !== null) {
             const firstName = match[1];
             const lastName = match[2];
             
-            // Validate the first word is not a title
-            if (!junkWords.has(firstName)) {
-                // Return the most recently found valid full name
-                return [firstName, lastName];
+            // Normalize to lowercase for comparison against MASTER_JUNK_WORDS
+            const lowerFirstName = firstName.toLowerCase();
+            const lowerLastName = lastName.toLowerCase();
+            
+            // Validate that NEITHER the first nor the last word is in the junk set
+            if (!MASTER_JUNK_WORDS.has(lowerFirstName) && !MASTER_JUNK_WORDS.has(lowerLastName)) {
+                // Return the capitalized version of the name
+                return [capitalize(firstName), capitalize(lastName)];
             }
         }
     }
@@ -177,46 +194,45 @@ app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
     const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
+    
+    // Use the consolidated MASTER_JUNK_WORDS set
+    const junkWords = MASTER_JUNK_WORDS;
 
     // 📧 Email shortcut logic
-    if (/email/i.test(lastUserMessage)) {
-      // Set of junk words in both lowercase and capitalized form for filtering
-      const junkWords = new Set([
-        // Lowercase versions (used for filtering user input)
-        "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", 
-        "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
-        // Capitalized versions (used for filtering extracted names from document content)
-        "Mr", "Mrs", "Ms", "Miss", "Dr", "Teacher", "Pastor", "Principal", "Coach"
-      ]);
+    if (/email|his|her/i.test(lastUserMessage)) {
       
       let first = "", last = "";
       
-      // 🛑 NEW: Step 1: Check conversation history for a context name
+      // 🛑 Step 1: Check conversation history for a context name
       const contextName = findContextualName(userMessages);
       if (contextName) {
           [first, last] = contextName;
       } else {
           // Step 2: Fallback to cleaning the last message (original logic)
+          // Extract words and convert to lowercase for filtering
           const rawWords = lastUserMessage.split(/[^a-zA-Z]+/).filter(w => w);
-          const words = rawWords.filter(w => !junkWords.has(w) && !junkWords.has(w.toLowerCase()));
+          const words = rawWords
+              .map(w => w.toLowerCase())
+              .filter(w => !junkWords.has(w));
           
           if (words.length >= 2) {
-            // Found two likely names (e.g., "John Smith")
+            // Found two likely names (e.g., "john smith")
             [first, last] = words.slice(0, 2);
 
           } else if (words.length === 1) {
-            // Found one word (e.g., "Hobbs")
+            // Found one word (e.g., "hobbs")
             const singleWord = words[0];
             
             // Check if this single word exists in the documents
             const knowledgeSearchPattern = new RegExp(`\\b${singleWord}\\b`, 'i');
 
             if (knowledgeSearchPattern.test(fcaKnowledge)) {
-              const presumedLastName = capitalize(singleWord);
+              // We've confirmed the last name exists in the knowledge base
+              const presumedLastName = singleWord; 
               
               // 🚀 ADVANCED LOGIC: Try to find the first name in the FCA Knowledge
-              const fullMatchRegex = new RegExp(`\\b([A-Z][a-z]+)\\s+${presumedLastName}\\b`, 'g');
+              // Look for a capitalized word before the last name (case-insensitive search)
+              const fullMatchRegex = new RegExp(`\\b([A-Z][a-z]+)\\s+${capitalize(presumedLastName)}\\b`, 'g');
               const allMatches = Array.from(fcaKnowledge.matchAll(fullMatchRegex));
               
               let foundFirstName = null;
@@ -224,24 +240,24 @@ app.post("/chat", async (req, res) => {
               for (const match of allMatches) {
                   const potentialFirstName = match[1];
                   
-                  // If the extracted word is NOT a capitalized title, use it.
-                  if (!junkWords.has(potentialFirstName)) {
+                  // Filter against the lowercase junk words
+                  if (!junkWords.has(potentialFirstName.toLowerCase())) {
                       foundFirstName = potentialFirstName;
                       break; 
                   }
               }
               
               if (foundFirstName) {
-                // Success! We found a real first name in the document
+                // Success! We found a real first name (e.g., "John")
                 first = foundFirstName;
                 last = presumedLastName;
               } else {
                 // Fallback: Last name confirmed, but no valid, non-title first name found
-                const emailFormat = `FirstName.${presumedLastName.toLowerCase()}@faithchristianacademy.net`;
+                const emailFormat = `FirstName.${presumedLastName}@faithchristianacademy.net`;
                 return res.json({
                   reply: {
                     role: "assistant",
-                    content: `I found a reference to **${presumedLastName}** in the FCA documents but couldn't confirm the first name. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
+                    content: `I found a reference to **${capitalize(presumedLastName)}** in the FCA documents but couldn't confirm the first name. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
                   },
                 });
               }
@@ -251,7 +267,7 @@ app.post("/chat", async (req, res) => {
 
       // Step 3: If a first and last name was successfully found via context OR direct parsing
       if (first && last) {
-        // Ensure names are properly cased for the display name
+        // Ensure names are capitalized for the display name
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
         // Ensure names are lowercased for the email address
         const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
