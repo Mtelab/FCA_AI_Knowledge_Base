@@ -24,6 +24,12 @@ let fcaKnowledge = "";
 let calendarURLs = [];
 let calendarText = "";
 
+// Helper Function: Moved to a global scope
+function capitalize(str) {
+  if (!str) return "";
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 // 📘 Load PDFs from /data
 async function loadPDFs() {
   try {
@@ -45,8 +51,9 @@ async function loadPDFs() {
         if (isStaffDoc && text.length > 0) {
           console.log(`🧠 Summarizing ${file} for clearer staff listings...`);
           try {
+            // NOTE: Using a real OpenAI model name (e.g., gpt-4o-mini) is safer than 'gpt-5-mini'
             const summary = await openai.chat.completions.create({
-              model: "gpt-5-mini", // you can use gpt-5-mini later once verified
+              model: "gpt-4o-mini", // Changed model for stability
               messages: [
                 {
                   role: "system",
@@ -139,42 +146,45 @@ app.post("/chat", async (req, res) => {
     const userMessages = req.body.messages || [];
     const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
 
-    // 🧠 Name lookup in PDF summaries
-    const possibleNames = fcaKnowledge.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g) || [];
-    const cleanedMessage = lastUserMessage.toLowerCase();
-    const junkWords = new Set(["mr", "mrs", "ms", "miss", "coach", "dr", "pastor", "teacher", "principal"]);
-
-    let matchedName = null;
-
-    for (const name of possibleNames) {
-      const [first, last] = name.split(" ");
-      if (
-        cleanedMessage.includes(first.toLowerCase()) &&
-        cleanedMessage.includes(last.toLowerCase())
-      ) {
-        matchedName = { first, last };
-        break;
-      }
-    }
-
-    // 📧 Email shortcut using matched or extracted name
+    // 📧 Email shortcut logic
     if (/email/i.test(lastUserMessage)) {
-      let first = "", last = "";
+      const junkWords = new Set([
+        "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
+        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "mr", "mrs", "ms", 
+        "miss", "coach", "dr", "teacher", "pastor", "principal" // Added titles to junk words for cleaner name extraction
+      ]);
 
-      if (matchedName) {
-        first = matchedName.first;
-        last = matchedName.last;
-      } else {
-        // Extract first + last from message (case-insensitive)
-        const words = lastUserMessage.toLowerCase().split(/[^a-z]+/).filter(w => w && !junkWords.has(w));
-        if (words.length >= 2) {
-          [first, last] = words.slice(0, 2);
+      // Step 1: Clean the message to extract potential name words
+      const words = lastUserMessage.toLowerCase().split(/[^a-z]+/).filter(w => w && !junkWords.has(w));
+      let first = "", last = "";
+      
+      // Step 2: Attempt to extract a first and last name from the message itself
+      if (words.length >= 2) {
+        [first, last] = words.slice(0, 2);
+      } else if (words.length === 1) {
+        // Handle single name requests like "Mr. Fields" -> 'fields'
+        const singleWord = words[0];
+        
+        // Step 3: Check if the single word exists in the PDF summaries (fcaKnowledge)
+        // Note: Using a case-insensitive, whole-word-boundary regex for safer matching
+        const knowledgeSearchPattern = new RegExp(`\\b${singleWord}\\b`, 'i');
+
+        if (knowledgeSearchPattern.test(fcaKnowledge)) {
+          // If a single name (like 'Fields') is found in the knowledge, 
+          // we can at least tell the user what to do next.
+          return res.json({
+            reply: {
+              role: "assistant",
+              content: `I found a reference to someone named **${capitalize(singleWord)}** in the documents. To generate their email, please provide their **full first and last name** (e.g., John Smith). The format is always \`FirstName.LastName@faithchristianacademy.net\`.`
+            },
+          });
         }
       }
 
+      // Step 4: If a first and last name were successfully extracted from the message (Step 2)
       if (first && last) {
         const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
-        const displayName = `${first.charAt(0).toUpperCase() + first.slice(1)} ${last.charAt(0).toUpperCase() + last.slice(1)}`;
+        const displayName = `${capitalize(first)} ${capitalize(last)}`;
 
         return res.json({
           reply: {
@@ -184,6 +194,7 @@ app.post("/chat", async (req, res) => {
         });
       }
 
+      // Step 5: Final fallback if no name was parsable and no single name was found in knowledge
       return res.json({
         reply: {
           role: "assistant",
@@ -191,36 +202,7 @@ app.post("/chat", async (req, res) => {
             "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
         },
       });
-
-    // 🧠 Default Q&A mode with context
-    const systemPrompt = {
-      role: "system",
-      content:
-        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following information:\n\n" +
-        "📚 FCA Documents:\n" +
-        fcaKnowledge +
-        "\n\n📅 Calendar Events:\n" +
-        calendarText +
-        "\n\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
-    };
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [systemPrompt, ...userMessages],
-    });
-
-    let reply = completion.choices[0]?.message?.content?.trim() || "";
-
-    res.json({ reply: { role: "assistant", content: reply } });
-  } catch (err) {
-    console.error("❌ Error in /chat route:", err);
-    res.status(500).json({ error: "Server error: check console for stack trace." });
-  }
-});
-
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
+    }
 
     // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A
     const systemPrompt = {
@@ -254,33 +236,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
