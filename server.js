@@ -51,9 +51,8 @@ async function loadPDFs() {
         if (isStaffDoc && text.length > 0) {
           console.log(`🧠 Summarizing ${file} for clearer staff listings...`);
           try {
-            // NOTE: Using a real OpenAI model name (e.g., gpt-4o-mini) is safer than 'gpt-5-mini'
             const summary = await openai.chat.completions.create({
-              model: "gpt-4o-mini", // Changed model for stability
+              model: "gpt-4o-mini", // Using a current model for stability
               messages: [
                 {
                   role: "system",
@@ -150,8 +149,8 @@ app.post("/chat", async (req, res) => {
     if (/email/i.test(lastUserMessage)) {
       const junkWords = new Set([
         "what", "is", "email", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "mr", "mrs", "ms", 
-        "miss", "coach", "dr", "teacher", "pastor", "principal" // Added titles to junk words for cleaner name extraction
+        "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "mr", "mrs", "ms",
+        "miss", "coach", "dr", "teacher", "pastor", "principal" // Junk words for cleaner extraction
       ]);
 
       // Step 1: Clean the message to extract potential name words
@@ -165,23 +164,25 @@ app.post("/chat", async (req, res) => {
         // Handle single name requests like "Mr. Fields" -> 'fields'
         const singleWord = words[0];
         
-        // Step 3: Check if the single word exists in the PDF summaries (fcaKnowledge)
         // Note: Using a case-insensitive, whole-word-boundary regex for safer matching
         const knowledgeSearchPattern = new RegExp(`\\b${singleWord}\\b`, 'i');
 
+        // 🛑 MODIFIED BLOCK 🛑
         if (knowledgeSearchPattern.test(fcaKnowledge)) {
-          // If a single name (like 'Fields') is found in the knowledge, 
-          // we can at least tell the user what to do next.
+          const presumedLastName = capitalize(singleWord);
+          const emailFormat = `FirstName.${presumedLastName.toLowerCase()}@faithchristianacademy.net`;
+          
           return res.json({
             reply: {
               role: "assistant",
-              content: `I found a reference to someone named **${capitalize(singleWord)}** in the documents. To generate their email, please provide their **full first and last name** (e.g., John Smith). The format is always \`FirstName.LastName@faithchristianacademy.net\`.`
+              content: `I found a reference to **${presumedLastName}** in the FCA documents. The email format for them is **${emailFormat}**. You will need to replace 'FirstName' with their actual first name.`,
             },
           });
         }
+        // 🛑 END OF MODIFIED BLOCK 🛑
       }
 
-      // Step 4: If a first and last name were successfully extracted from the message (Step 2)
+      // Step 3: If a first and last name were successfully extracted from the message (Step 2)
       if (first && last) {
         const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
@@ -194,7 +195,7 @@ app.post("/chat", async (req, res) => {
         });
       }
 
-      // Step 5: Final fallback if no name was parsable and no single name was found in knowledge
+      // Step 4: Final fallback if no name was parsable and no single name was found in knowledge
       return res.json({
         reply: {
           role: "assistant",
