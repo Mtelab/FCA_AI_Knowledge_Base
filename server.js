@@ -145,7 +145,7 @@ app.get("/", (req, res) => {
 const MASTER_JUNK_WORDS = new Set([
   // General filler/question words
   "what", "is", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
-  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an", "i", "apologize",
+  "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an", "i", "apologize", "who",
   // Titles/Salutations/Roles
   "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
   "director", "head", "administrator", "business",
@@ -154,6 +154,11 @@ const MASTER_JUNK_WORDS = new Set([
   // Common short prepositions/articles often part of titles
   "in", "on", "by", "from"
 ]);
+
+// 🛑 Define a list of recognizable job roles to search for in a direct question
+const ROLE_KEYWORDS = [
+    "administrator", "principal", "pastor", "teacher", "coach", "director", "head of school", "business manager", "counselor"
+];
 
 /**
  * Searches the message history for the most recently mentioned full name.
@@ -191,6 +196,36 @@ function findContextualName(messages) {
     return null; // No valid name found in context
 }
 
+/**
+ * Attempts to find a Name based on a Role Keyword found in the message.
+ * Searches the fcaKnowledge for the role and extracts the nearest full name.
+ * @param {string} role - The job role to search for (e.g., "business administrator").
+ * @returns {Array|null} - An array [FirstName, LastName] (lowercase) or null.
+ */
+function findNameByRole(role) {
+    // Escape special regex characters in the role
+    const escapedRole = role.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    
+    // Search the knowledge base (case-insensitive) for the role
+    // Regex looks for a phrase containing the role and captures the nearest name preceding it.
+    // It looks for "Name – Role" or "Name is the Role".
+    const roleSearchRegex = new RegExp(`([A-Z][a-z]+)\\s+([A-Z][a-z]+)\\s*[-\\sisthe]*\\s*${escapedRole}`, 'i');
+    
+    const match = fcaKnowledge.match(roleSearchRegex);
+
+    if (match && match.length >= 3) {
+        const firstName = match[1];
+        const lastName = match[2];
+        
+        // Final check against junk words (ensuring we didn't just capture a title as the first name)
+        if (!MASTER_JUNK_WORDS.has(firstName.toLowerCase())) {
+            // Return lowercase names for email construction
+            return [firstName.toLowerCase(), lastName.toLowerCase()]; 
+        }
+    }
+    return null;
+}
+
 app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
@@ -205,15 +240,16 @@ app.post("/chat", async (req, res) => {
       
       let first = "", last = "";
       
-      // 🛑 Step 1: Check conversation history for a context name (if "his" or "her" is used in the current message)
+      // 🛑 Step 1: Check conversation history for a context name (if "his" or "her" is used)
       if (/(his|her)/i.test(lastUserMessage)) {
           const contextName = findContextualName(userMessages);
           if (contextName) {
-              [first, last] = contextName;
+              // Context names are returned capitalized, so we lowercase them for email construction
+              [first, last] = [contextName[0].toLowerCase(), contextName[1].toLowerCase()]; 
           }
       }
       
-      // Step 2: Fallback to cleaning the last message (original logic)
+      // Step 2: Fallback: Try to parse a name directly from the current message
       if (!first) {
           // Extract words and convert to lowercase for filtering
           const rawWords = lastUserMessage.split(/[^a-zA-Z]+/).filter(w => w);
@@ -233,11 +269,9 @@ app.post("/chat", async (req, res) => {
             const knowledgeSearchPattern = new RegExp(`\\b${singleWord}\\b`, 'i');
 
             if (knowledgeSearchPattern.test(fcaKnowledge)) {
-              // We've confirmed the last name exists in the knowledge base
               const presumedLastName = singleWord; 
               
               // 🚀 ADVANCED LOGIC: Try to find the first name in the FCA Knowledge
-              // Look for a capitalized word before the last name (case-insensitive search)
               const fullMatchRegex = new RegExp(`\\b([A-Z][a-z]+)\\s+${capitalize(presumedLastName)}\\b`, 'g');
               const allMatches = Array.from(fcaKnowledge.matchAll(fullMatchRegex));
               
@@ -246,7 +280,6 @@ app.post("/chat", async (req, res) => {
               for (const match of allMatches) {
                   const potentialFirstName = match[1];
                   
-                  // Filter against the lowercase junk words
                   if (!junkWords.has(potentialFirstName.toLowerCase())) {
                       foundFirstName = potentialFirstName;
                       break; 
@@ -255,7 +288,7 @@ app.post("/chat", async (req, res) => {
               
               if (foundFirstName) {
                 // Success! We found a real first name (e.g., "John")
-                first = foundFirstName;
+                first = foundFirstName.toLowerCase();
                 last = presumedLastName;
               } else {
                 // Fallback: Last name confirmed, but no valid, non-title first name found
@@ -271,22 +304,49 @@ app.post("/chat", async (req, res) => {
           }
       }
 
-      // Step 3: If a first and last name was successfully found via context OR direct parsing
+      // 🛑 Step 3: NEW LOGIC - If no name yet, search by Role
+      if (!first) {
+          const lowerMessage = lastUserMessage.toLowerCase();
+          let foundRole = null;
+          
+          // Find the longest matching role keyword
+          for (const role of ROLE_KEYWORDS) {
+              if (lowerMessage.includes(role)) {
+                  foundRole = role;
+                  break; // Use the first (longest in the defined list) match
+              }
+          }
+          
+          if (foundRole) {
+              const nameByRole = findNameByRole(foundRole);
+              if (nameByRole) {
+                  // Names from findNameByRole are already lowercase
+                  [first, last] = nameByRole; 
+              }
+          }
+      }
+
+      // Step 4: If a first and last name was successfully found 
       if (first && last) {
-        // Ensure names are capitalized for the display name
+        // Names are already lowercased (first, last)
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
-        // Ensure names are lowercased for the email address
-        const email = `${first.toLowerCase()}.${last.toLowerCase()}@faithchristianacademy.net`;
+        const email = `${first}.${last}@faithchristianacademy.net`;
         
+        // Also, answer the "who is" part of the question.
+        let whoIsAnswer = "";
+        if (lastUserMessage.toLowerCase().includes("who is")) {
+            whoIsAnswer = `The person you are asking about is **${displayName}**.\n\n`;
+        }
+
         return res.json({
           reply: {
             role: "assistant",
-            content: `The email address for ${displayName} is likely **${email}**.`,
+            content: `${whoIsAnswer}The email address for ${displayName} is likely **${email}**.`,
           },
         });
       }
 
-      // Step 4: Final fallback (no name found in context, message, or documents)
+      // Step 5: Final fallback (no name found)
       return res.json({
         reply: {
           role: "assistant",
