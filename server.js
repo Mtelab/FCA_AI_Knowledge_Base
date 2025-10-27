@@ -56,7 +56,6 @@ async function loadPDFs() {
               messages: [
                 {
                   role: "system",
-                  // Instructing AI to extract names and roles, keeping the formatting simple
                   content:
                     "Extract all staff names and roles from this FCA document. Format each item as 'Name – Title'. Keep it factual and concise. Place each name/title pair on a new line. Do not include any introductory or concluding text."
                 },
@@ -149,11 +148,15 @@ const MASTER_JUNK_WORDS = new Set([
   // General filler/question words
   "what", "is", "address", "the", "for", "please", "give", "me", "of", "do", "you", "know",
   "tell", "can", "someone", "send", "need", "get", "find", "contact", "info", "a", "his", "her", "and", "an", "i", "apologize", "who", "be",
-  "that", "system", "answers", "to", "get", // 🛑 Added "that", "answers", "system", "to", "get"
-  // Titles/Salutations/Roles (these are also on the ROLE_KEYWORDS list below, but keeping them here for name filtering)
+  // 🛑 Added common PDF extraction remnants and fillers
+  "that", "answers", "system", "to", "get", "inquire", "with", "call", "by", "or", "for", "more", 
+  "information", "about", "our", "staff", "the", "next", 
+  "questions", "concerning", "email", "office", "may", // NEW ADDITIONS
+  "this", "person", "is", "responsible", "area", "please", // More safety words
+  // Titles/Salutations/Roles 
   "mr", "mrs", "ms", "miss", "dr", "teacher", "pastor", "principal", "coach", 
   "director", "head", "administrator", "business", "manager", "counselor", "assistant",
-  // Organizational Names (to avoid matching "Faith Christian" as a name)
+  // Organizational Names
   "faith", "christian", "academy", "school", "at", "fca", 
   // Common short prepositions/articles often part of titles
   "in", "on", "by", "from", "with"
@@ -203,49 +206,30 @@ function findContextualName(messages) {
 }
 
 /**
- * Attempts to find a Name based on a Role Title found in the message, by searching the specific line.
+ * Attempts to find a Name based on a Role Title found in the message, using a simpler, single-pass search
+ * across the entire knowledge base.
  * @param {string} role - The job role to search for (e.g., "business administrator").
  * @returns {Array|null} - An array [FirstName, LastName] (lowercase) or null.
  */
 function findNameByRole(role) {
     const escapedRole = role.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
     
-    // Split the knowledge into individual lines
-    const knowledgeLines = fcaKnowledge.split('\n');
+    // Pattern: (Word) (Word) [optional separator/space] (Role)
+    // This is the simplest and least fragile pattern that should still capture most list formats.
+    const nameRoleSearch = new RegExp(`([a-zA-Z]+)\\s+([a-zA-Z]+)\\s*[-–,:;\\s]*\\b${escapedRole}\\b`, 'i');
     
-    let bestName = null;
-    
-    // Find the relevant line(s) containing the role
-    for (const line of knowledgeLines) {
-        const lowerLine = line.toLowerCase();
+    let match = fcaKnowledge.match(nameRoleSearch);
+
+    if (match && match.length >= 3) {
+        const firstName = match[1];
+        const lastName = match[2];
         
-        if (lowerLine.includes(role)) {
-            // Found a line containing the role. Now, search only this line for the name.
-            
-            // Regex finds any two words separated by a space, regardless of case, 
-            // but we constrain it to the front of the line (before the role)
-            const namePattern = /\b([a-zA-Z]+)\s+([a-zA-Z]+)\b/g; 
-            let match;
-            
-            // We search the entire line, and use the word filter to validate the name
-            while ((match = namePattern.exec(line)) !== null) {
-                const firstName = match[1];
-                const lastName = match[2];
-                
-                const lowerFirstName = firstName.toLowerCase();
-                const lowerLastName = lastName.toLowerCase();
-                
-                // Use the comprehensive junk word filter
-                if (!MASTER_JUNK_WORDS.has(lowerFirstName) && !MASTER_JUNK_WORDS.has(lowerLastName)) {
-                    // This is the last valid name found on this line, which is the best candidate
-                    bestName = [lowerFirstName, lowerLastName];
-                }
-            }
-            
-            // If we found a name on this line, return it immediately
-            if (bestName) {
-                return bestName; 
-            }
+        const lowerFirstName = firstName.toLowerCase();
+        const lowerLastName = lastName.toLowerCase();
+        
+        // Validate against the junk list
+        if (!MASTER_JUNK_WORDS.has(lowerFirstName) && !MASTER_JUNK_WORDS.has(lowerLastName)) {
+            return [lowerFirstName, lowerLastName];
         }
     }
 
