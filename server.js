@@ -140,32 +140,30 @@ app.post("/chat", async (req, res) => {
     const lastUserMessage =
       userMessages[userMessages.length - 1]?.content || "";
 
-    // 📧 Staff email shortcut (robust handling)
     if (/email/i.test(lastUserMessage)) {
-      // Try to extract a full name (anywhere in the message)
-      const nameMatch = lastUserMessage.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/);
-    
-      if (nameMatch) {
-        const first = nameMatch[1].toLowerCase();
-        const last = nameMatch[2].toLowerCase();
-        const email = `${first}.${last}@faithchristianacademy.net`;
-    
-        return res.json({
-          reply: {
-            role: "assistant",
-            content: `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`,
-          },
-        });
-      } else {
-        return res.json({
-          reply: {
-            role: "assistant",
-            content:
-              "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
-          },
-        });
-      }
+    const nameMatch = lastUserMessage.match(/\b([a-z]+)\s+([a-z]+)\b/i);
+  
+    if (nameMatch) {
+      const first = nameMatch[1].toLowerCase();
+      const last = nameMatch[2].toLowerCase();
+      const email = `${first}.${last}@faithchristianacademy.net`;
+  
+      return res.json({
+        reply: {
+          role: "assistant",
+          content: `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`,
+        },
+      });
+    } else {
+      return res.json({
+        reply: {
+          role: "assistant",
+          content:
+            "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
+        },
+      });
     }
+  }
 
     // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A
     const systemPrompt = {
@@ -199,6 +197,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
