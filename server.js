@@ -191,7 +191,6 @@ app.post("/chat", async (req, res) => {
             "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).",
         },
       });
-    }
 
     // 🧠 Default Q&A mode with context
     const systemPrompt = {
@@ -255,6 +254,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
