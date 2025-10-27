@@ -79,53 +79,50 @@ async function loadPDFs() {
   }
 }
 
-// 📅 Load all Google Calendars (from .ics URLs)
+import { DateTime } from "luxon";
+import ical from "ical";
+import fetch from "node-fetch";
+
+let calendarText = "";
+
+// 🗓️ Load Google Calendar URLs from environment variable
 async function loadAllCalendars() {
-  calendarText = "";
-  const now = new Date(); // current time
-  const oneYearAhead = new Date();
-  oneYearAhead.setFullYear(now.getFullYear() + 1); // optional: limit to next 12 months
+  if (!process.env.CALENDAR_URLS) return;
 
-  for (const url of calendarURLs) {
+  const urls = process.env.CALENDAR_URLS.split(",").map(u => u.trim());
+  const now = DateTime.now().setZone("America/New_York");
+  let combined = "";
+
+  for (const url of urls) {
     try {
-      console.log(`🔄 Fetching calendar: ${url}`);
-      const data = await ical.async.fromURL(url);
-      const events = Object.values(data).filter(
-        (e) =>
-          e.type === "VEVENT" &&
-          e.start instanceof Date &&
-          e.start >= now && // ✅ only future events
-          e.start <= oneYearAhead // optional upper bound
-      );
+      const res = await fetch(url);
+      const data = await res.text();
+      const events = ical.parseICS(data);
 
-      for (const event of events) {
-        const start = event.start.toLocaleString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        const end = event.end
-          ? event.end.toLocaleString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "";
-        calendarText += `\n📅 Event: ${event.summary}\n🕒 Date: ${start}${
-          end ? " - " + end : ""
-        }\n📍 Location: ${event.location || "TBA"}\n📝 Description: ${
-          event.description || ""
-        }\n---\n`;
+      for (const k in events) {
+        const ev = events[k];
+        if (ev.type !== "VEVENT") continue;
+
+        // 🕒 Convert to proper Eastern Time
+        const start = DateTime.fromJSDate(ev.start, { zone: "utc" })
+          .setZone("America/New_York");
+        const end = DateTime.fromJSDate(ev.end, { zone: "utc" })
+          .setZone("America/New_York");
+
+        // 📅 Skip events more than 1 day in the past
+        if (end < now.minus({ days: 1 })) continue;
+
+        const timeStr = `${start.toFormat("cccc, LLLL d")} from ${start.toFormat("h:mm a")} to ${end.toFormat("h:mm a")}`;
+        const location = ev.location ? ` at ${ev.location}` : "";
+        combined += `\n${ev.summary} — ${timeStr}${location}`;
       }
     } catch (err) {
-      console.warn(`⚠️ Error loading calendar ${url}: ${err.message}`);
+      console.warn("⚠️ Calendar load failed:", url, err.message);
     }
   }
 
-  console.log(
-    `✅ Loaded ${calendarURLs.length} calendar(s) with upcoming events only.`
-  );
+  calendarText = combined || "No upcoming events found.";
+  console.log("✅ Calendars loaded with timezone correction and future-event filtering.");
 }
 
 // 🚀 Initial load of PDFs
@@ -196,6 +193,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
