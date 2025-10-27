@@ -142,33 +142,33 @@ app.get("/", (req, res) => {
   res.status(200).send("✅ FCA Assistant backend is running.");
 });
 
-// 💬 Chat endpoint
 app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
-
-    const context =
-      fcaKnowledge +
-      (calendarText
-        ? "\n--- Google Calendar Events ---\n" + calendarText
-        : "");
+    const lastUserMessage =
+      userMessages[userMessages.length - 1]?.content || "";
 
     const systemPrompt = {
       role: "system",
       content:
-        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents and event calendars:\n" +
-        context +
-        "\nIf the question cannot be answered using these materials, politely tell the user to visit the official Faith Christian Academy website (https://www.faithchristianacademy.net). Do not invent answers.",
+        "You are FCA Assistant, an AI trained to answer questions about Faith Christian Academy using the following official documents:\n" +
+        fcaKnowledge +
+        "\nIf the question cannot be answered using these materials, respond ONLY with this text: [NEEDS_WEBSITE_SEARCH].",
     };
 
+    // ask OpenAI for a reply
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
+      model: "gpt-4o-mini",
       messages: [systemPrompt, ...userMessages],
     });
 
-        // 📧 If user asks for a staff email, generate it automatically
-    if (/email/i.test(lastUserMessage) && /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)) {
-      // Try to find a name in the user’s request
+    let reply = completion.choices[0]?.message?.content?.trim() || "";
+
+    // 📧 Staff email shortcut
+    if (
+      /email/i.test(lastUserMessage) &&
+      /\b(staff|teacher|faculty|coach|mr|mrs|ms)\b/i.test(lastUserMessage)
+    ) {
       const nameMatch = lastUserMessage.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
       if (nameMatch) {
         const first = nameMatch[1].toLowerCase();
@@ -176,14 +176,18 @@ app.post("/chat", async (req, res) => {
         const email = `${first}.${last}@faithchristianacademy.net`;
         reply = `The email address for ${nameMatch[1]} ${nameMatch[2]} is likely **${email}**.`;
       } else {
-        reply = "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).";
+        reply =
+          "If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@faithchristianacademy.net).";
       }
     }
 
-    res.json({ reply: completion.choices[0].message });
+    // send reply to frontend
+    res.json({ reply: { role: "assistant", content: reply } });
   } catch (err) {
-    console.error("❌ Error:", err);
-    res.status(500).json({ error: "Error communicating with OpenAI API." });
+    console.error("❌ Error in /chat route:", err);
+    res
+      .status(500)
+      .json({ error: "Server error: check console for stack trace." });
   }
 });
 
@@ -191,6 +195,7 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
 
 
 
