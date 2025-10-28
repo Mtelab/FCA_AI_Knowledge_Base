@@ -16,7 +16,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Fix: Correctly define __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
-const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "defaultdomain.net"; // Configurable domain
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "faithchristianacademy.net"; // Configurable domain
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -305,3 +305,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
+
