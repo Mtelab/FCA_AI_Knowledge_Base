@@ -13,8 +13,10 @@ const pdfParse = require("pdf-parse");
 dotenv.config();
 const app = express();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
+
+// 🎯 FIX: Removed stray space from import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
-const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "defaultdomain.net"; // Use configurable domain
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "faithchristianacademy.net"; // Use configurable domain
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -56,7 +58,6 @@ async function loadPDFs() {
               messages: [
                 {
                   role: "system",
-                  // Ensure names and titles are extracted cleanly, retaining any titles present.
                   content:
                     "Extract all staff names and roles from this FCA document. Format each item as 'Name – Title'. Keep it factual and concise. Place each name/title pair on a new line. Do not include any introductory or concluding text."
                 },
@@ -163,11 +164,11 @@ async function findNameByRoleViaLLM(role) {
     const prompt = `From the following staff data, find the full first and last name of the person who holds the role: "${role}".
 
     **CRITICAL INSTRUCTION:**
-    1.  Search for the person who holds the exact title: "${role}".
-    2.  If the exact title is not found, you MUST return the name of the person who holds the most closely related administrative role that contains the word "${role}". For example, if asked for "Principal" and the data only has "Secondary Principal" and "Elementary Principal", choose the name associated with the most senior-sounding administrative title.
-    3.  Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
-    4.  The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
-    5.  Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO plausible name can be found, respond ONLY with {"first_name": "", "last_name": ""}.
+    1. Search for the person who holds the exact title: "${role}".
+    2. If the exact title is not found, you MUST return the name of the person who holds the **most closely related administrative role** based on the user's query and the data provided. For example, if asked for "Principal" and the data only has "Secondary Principal" and "Elementary Principal", choose the name associated with the most senior-sounding administrative title.
+    3. Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
+    4. The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
+    5. Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO plausible name can be found, respond ONLY with {"first_name": "", "last_name": ""}.
 
     Staff Data:
     ---
