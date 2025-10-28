@@ -33,8 +33,9 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// 📘 Load PDFs from /data 
+// 📘 Load PDFs from /data (unchanged)
 async function loadPDFs() {
+  // ... (unchanged PDF loading and summarizing logic) ...
   try {
     const files = fs.readdirSync(dataDir);
     for (const file of files) {
@@ -69,7 +70,7 @@ async function loadPDFs() {
             
             if (cleaned) {
                 fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
-                console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`);
+                // console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`); // Keep console clean
             } else {
               fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
             }
@@ -89,8 +90,9 @@ async function loadPDFs() {
   }
 }
 
-// 🗓️ Load Google Calendar URLs
+// 🗓️ Load Google Calendar URLs (unchanged)
 async function loadAllCalendars() {
+  // ... (unchanged calendar loading logic) ...
   try {
     if (!process.env.CALENDAR_URLS) return;
 
@@ -140,157 +142,116 @@ app.get("/", (req, res) => {
 });
 
 
-// 🛑 Define a list of full job titles to search for in a direct question (Only for detection)
+// 🛑 Define a list of full job titles to search for in a direct question (for heuristic use only)
 const ROLE_KEYWORDS = [
-    "head of school", 
-    "business administrator", 
+    "superintendent", 
     "business manager", 
-    "administrator", 
     "principal", 
-    "pastor", 
-    "teacher", 
-    "coach", 
     "director", 
     "counselor",
     "secondary principal",
-    "elementary principal"
+    "elementary principal",
+    "administrative assistant",
+    "school nurse",
+    "dean of students"
 ];
 
 /**
- * Uses the LLM to reliably extract a clean first and last name for a given role, 
- * handling ambiguity dynamically within the prompt.
+ * Uses the LLM to reliably extract a clean first and last name from the knowledge base,
+ * based on a user query that may contain a name or a role. Includes a retry loop.
  */
-async function findNameByRoleViaLLM(role) {
-    const prompt = `From the following staff data, find the full first and last name of the person who holds the role: "${role}".
+async function extractNameFromQuery(query, knowledge) {
+    const prompt = `Analyze the following user query and staff data. Your goal is to extract the first name and last name of the relevant person.
 
-    **CRITICAL INSTRUCTION:**
-    1. Search for the person who holds the exact title: "${role}".
-    2. If the exact title is not found, you MUST return the name of the person who holds the **most closely related administrative role** based on the user's query and the data provided. For example, if asked for "Principal" and the data only has "Secondary Principal" and "Elementary Principal", choose the name associated with the most senior-sounding administrative title.
-    3. Extract the first and last name, ensuring **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
-    4. The names must be returned in **lowercase** and placed in the 'first_name' and 'last_name' fields.
-    5. Respond ONLY with a JSON object containing the fields "first_name" and "last_name". If NO plausible name can be found, respond ONLY with {"first_name": "", "last_name": ""}.
+    **USER QUERY (Name or Role to find):** "${query}"
 
-    Staff Data:
+    **STAFF DATA:**
     ---
-    ${fcaKnowledge}
+    ${knowledge}
     ---
+    
+    **CRITICAL INSTRUCTION & LOGIC:**
+    1. **If the query is a NAME (e.g., 'Jeffrey Baker', 'Mrs. Walls'):** Search for that name exactly. If multiple matches exist (e.g., two people named 'Michael'), select the person with the most senior or relevant title.
+    2. **If the query is a ROLE (e.g., 'Principal', 'Business Manager'):**
+       - First, search for the role exactly.
+       - If the exact role is not found (e.g., 'Principal' is asked, but only 'Secondary Principal' exists), you **MUST** select the most appropriate person based on the closest administrative title (e.g., choosing 'Secondary Principal' or the highest-ranking principal).
+    3. Extract the full first and last name.
+    4. Ensure **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
+    5. The names must be returned in **lowercase** and placed in a single string, separated by a comma (e.g., "first,last").
+    6. Respond **ONLY** with the comma-separated string. If NO plausible name can be found, respond **ONLY** with an empty string.
     `;
 
-    try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }, 
-            temperature: 0.0 // Ensure deterministic response
-        });
+    // 🎯 Use a retry loop for robust extraction
+    for (let i = 0; i < 3; i++) { 
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: prompt }],
+                temperature: i === 0 ? 0.0 : 0.1 
+            });
 
-        const jsonString = completion.choices[0]?.message?.content?.trim();
-        const result = JSON.parse(jsonString);
+            const resultString = completion.choices[0]?.message?.content?.trim() || '';
 
-        // Basic validation
-        const first = result.first_name || '';
-        const last = result.last_name || '';
-
-        if (first.length > 1 && last.length > 1 && 
-            !first.toLowerCase().includes('name') && 
-            !last.toLowerCase().includes('title')
-            ) {
-            return [
-                first.toLowerCase(), 
-                last.toLowerCase()
-            ];
+            // Parsing the simple comma-separated string
+            if (resultString) {
+                const parts = resultString.split(',');
+                if (parts.length === 2) {
+                    const first = parts[0].trim().toLowerCase();
+                    const last = parts[1].trim().toLowerCase();
+                    
+                    // Basic validation to ensure a name was actually extracted
+                    if (first.length > 1 && last.length > 1 && !first.includes('name') && !last.includes('title')) {
+                        console.log(`✅ Name found on attempt ${i + 1}: ${first}, ${last}`);
+                        return [first, last]; // Success!
+                    }
+                }
+            }
+            console.warn(`⚠️ Attempt ${i + 1} failed to extract valid name. Retrying...`);
+        } catch (err) {
+            console.error(`⚠️ LLM Name Extraction attempt ${i + 1} failed:`, err.message);
         }
-
-    } catch (err) {
-        console.error("⚠️ LLM Name Extraction Failed:", err.message);
     }
     
-    return null;
+    return null; // Return null only after all retries fail
 }
+
 
 app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
-    let lastUserMessage = userMessages[userMessages.length - 1]?.content || ""; // Changed to 'let'
+    let lastUserMessage = userMessages[userMessages.length - 1]?.content || ""; 
 
-    // 🎯 NEW FIX: Strip possessive forms before processing the message
-    // Replaces 's or s' with an empty string, ensuring Baker's becomes Baker
-    lastUserMessage = lastUserMessage.replace(/'s|s'/gi, '');
-    
     // 📧 Email shortcut logic
     if (/(email|contact)/i.test(lastUserMessage)) {
       
-      let first = "", last = ""; 
-      let foundRole = null; 
-      let nameByRole = null;
-
-      // 🛑 Step 1: Detect Role
-      const lowerMessage = lastUserMessage.toLowerCase();
-      if (/(who is|who's|his|her)/i.test(lowerMessage)) {
-          for (const role of ROLE_KEYWORDS) {
-              if (lowerMessage.includes(role)) {
-                  foundRole = role;
-                  break; 
-              }
-          }
-      }
+      // 1. Strip possessive forms and courtesy titles for a cleaner search query
+      const cleanedMessage = lastUserMessage
+        .replace(/'s|s'/gi, '')
+        .replace(/(mrs|mr|dr|ms)\.?\s*/gi, '');
       
-      // 🛑 Step 2: Role Lookup (Only executed if a role was detected)
-      if (foundRole) {
-          nameByRole = await findNameByRoleViaLLM(foundRole); 
-          if (nameByRole) {
-              [first, last] = nameByRole; 
-          }
-      }
-
-      // 🛑 Step 3: Direct Name Extraction (Only executed if Step 2 FAILED or was SKIPPED)
-      // If foundRole is null (no role query), we try direct name lookup.
-      // If nameByRole is null (role lookup failed), we try direct name lookup.
-      if (!nameByRole && !foundRole) {
-        
-        // Use LLM to extract the name directly from the cleaned query
-        const directNamePrompt = `Extract the first name and last name from the following user query. The names must be in lowercase. Respond ONLY with a JSON object. If no full name is clearly present, respond with the empty structure.
-        
-        User Query: "${lastUserMessage}"
-        `;
-        
-        try {
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [{ role: "user", content: directNamePrompt }],
-                response_format: { type: "json_object" }, 
-                temperature: 0.0
-            });
-
-            const jsonString = completion.choices[0]?.message?.content?.trim();
-            const result = JSON.parse(jsonString);
-
-            // Populate first and last if extraction was successful
-            if (result.first_name && result.last_name) {
-                first = result.first_name.toLowerCase();
-                last = result.last_name.toLowerCase();
-            }
-        } catch (err) {
-            console.error("⚠️ LLM Direct Name Extraction Failed:", err.message);
-        }
-      }
+      // 2. Use the robust LLM function for contextual name/role extraction
+      const nameExtractionResult = await extractNameFromQuery(cleanedMessage, fcaKnowledge);
       
-      // Step 4: Final output with name and email (Execution only if first AND last are set)
+      let first = nameExtractionResult ? nameExtractionResult[0] : null;
+      let last = nameExtractionResult ? nameExtractionResult[1] : null;
+
+      // Check if the LLM successfully extracted the name
       if (first && last) {
-        // Construct display name 
-        const displayName = `${capitalize(first)} ${capitalize(last)}`;
         
-        // Email uses the configurable domain
+        // 3. Email found! Build the final response.
+        const displayName = `${capitalize(first)} ${capitalize(last)}`;
         const email = `${first}.${last}@${EMAIL_DOMAIN}`;
         
         let whoIsAnswer = "";
         
-        // Use a generic description if the name was directly asked for
+        // Heuristic to try and determine the role for a better response
+        const lowerMessage = cleanedMessage.toLowerCase();
+        let foundRole = ROLE_KEYWORDS.find(role => lowerMessage.includes(role));
+
         if (foundRole) {
-            // Note: foundRole is still the original term (e.g., "principal"), not the resolved title.
-            whoIsAnswer = `Based on the documents, the email for the ${capitalize(foundRole)} is: **${email}**. The person is ${displayName}.`;
+            whoIsAnswer = `The email for the **${capitalize(foundRole)}** (${displayName}) is: **${email}**.`;
         } else {
-            // Simple response for direct name queries (e.g., Jeffrey Baker)
+            // Simple response for direct name queries
             whoIsAnswer = `The email address for **${displayName}** is: **${email}**.`;
         }
 
@@ -302,17 +263,17 @@ app.post("/chat", async (req, res) => {
         });
       }
 
-      // Step 5: Final fallback (no name found)
+      // 4. Final fallback (no name found after 3 LLM attempts)
       return res.json({
         reply: {
           role: "assistant",
           content:
-            `I couldn't find a plausible name for that role or person in the documents. If you can tell me the first and last name, I can give you their email address (format: FirstName.LastName@${EMAIL_DOMAIN}).`,
+            `I couldn't find a name for that person or role in the documents after multiple attempts. If you can confirm the full first and last name, I can provide the email address (format: FirstName.LastName@${EMAIL_DOMAIN}).`,
         },
       });
     }
 
-    // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A
+    // 🧠 Otherwise, continue to OpenAI for normal FCA Q&A (unchanged)
     const systemPrompt = {
       role: "system",
       content:
