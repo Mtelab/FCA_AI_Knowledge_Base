@@ -16,7 +16,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Fix: Correctly define __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
-const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "faithchristianacademy.net"; // Configurable domain
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "defaultdomain.net"; // Configurable domain
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -30,12 +30,14 @@ let calendarText = "";
 // Helper Function: Defined globally
 function capitalize(str) {
   if (!str) return "";
-  return str.charAt(0).toUpperCase() + str.slice(1);
+  // Capitalize the first letter of each word
+  return str.split(' ').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ');
 }
 
-// 📘 Load PDFs from /data (unchanged)
+// 📘 Load PDFs from /data 
 async function loadPDFs() {
-  // ... (unchanged PDF loading and summarizing logic) ...
   try {
     const files = fs.readdirSync(dataDir);
     for (const file of files) {
@@ -54,6 +56,7 @@ async function loadPDFs() {
         if (isStaffDoc && text.length > 0) {
           console.log(`🧠 Summarizing ${file} for clearer staff listings...`);
           try {
+            // Use LLM to structure staff data for better lookup
             const summary = await openai.chat.completions.create({
               model: "gpt-4o-mini", 
               messages: [
@@ -70,7 +73,6 @@ async function loadPDFs() {
             
             if (cleaned) {
                 fcaKnowledge += `\n--- ${file} (summarized) ---\n${cleaned}\n`;
-                // console.log(`**Extracted Staff and Roles from ${file}:**\n${cleaned}`); // Keep console clean
             } else {
               fcaKnowledge += `\n--- ${file} ---\n${text}\n`;
             }
@@ -90,9 +92,8 @@ async function loadPDFs() {
   }
 }
 
-// 🗓️ Load Google Calendar URLs (unchanged)
+// 🗓️ Load Google Calendar URLs 
 async function loadAllCalendars() {
-  // ... (unchanged calendar loading logic) ...
   try {
     if (!process.env.CALENDAR_URLS) return;
 
@@ -142,46 +143,33 @@ app.get("/", (req, res) => {
 });
 
 
-// 🛑 Define a list of full job titles to search for in a direct question (for heuristic use only)
-const ROLE_KEYWORDS = [
-    "superintendent", 
-    "business manager", 
-    "principal", 
-    "director", 
-    "counselor",
-    "secondary principal",
-    "elementary principal",
-    "administrative assistant",
-    "school nurse",
-    "dean of students"
-];
-
 /**
- * Uses the LLM to reliably extract a clean first and last name from the knowledge base,
- * based on a user query that may contain a name or a role. Includes a retry loop.
+ * Uses the LLM to extract name and role in a reliable JSON format.
  */
 async function extractNameFromQuery(query, knowledge) {
-    const prompt = `Analyze the following user query and staff data. Your goal is to extract the first name and last name of the relevant person.
-
-    **USER QUERY (Name or Role to find):** "${query}"
-
-    **STAFF DATA:**
+    const prompt = `
+    **CRITICAL TASK: NAME AND ROLE EXTRACTION**
+    
+    Analyze the following **USER QUERY** and **STAFF DATA**. Your goal is to accurately identify the target person and their role, using contextual reasoning for the best possible match (e.g., if asked for "principal," select the highest-ranking principal available from the list, or the Secondary Principal if multiple are listed).
+    
+    **USER QUERY:** "${query}"
+    
+    **STAFF DATA (Names and Roles):**
     ---
     ${knowledge}
     ---
     
-    **CRITICAL INSTRUCTION & LOGIC:**
-    1. **If the query is a NAME (e.g., 'Jeffrey Baker', 'Mrs. Walls'):** Search for that name exactly. If multiple matches exist (e.g., two people named 'Michael'), select the person with the most senior or relevant title.
-    2. **If the query is a ROLE (e.g., 'Principal', 'Business Manager'):**
-       - First, search for the role exactly.
-       - If the exact role is not found (e.g., 'Principal' is asked, but only 'Secondary Principal' exists), you **MUST** select the most appropriate person based on the closest administrative title (e.g., choosing 'Secondary Principal' or the highest-ranking principal).
-    3. Extract the full first and last name.
-    4. Ensure **ALL courtesy titles (Mr., Mrs., Dr., etc.) are stripped** from the names.
-    5. The names must be returned in **lowercase** and placed in a single string, separated by a comma (e.g., "first,last").
-    6. Respond **ONLY** with the comma-separated string. If NO plausible name can be found, respond **ONLY** with an empty string.
+    **CRITICAL OUTPUT INSTRUCTION:**
+    1. Extract the full first name, last name, and the specific role of the person.
+    2. Strip ALL courtesy titles (Mr., Mrs., Dr., etc.).
+    3. Return the result in **lowercase** and in the **EXACT JSON FORMAT** specified below.
+    4. If NO plausible match is found, return the fallback JSON: {"first_name": "", "last_name": "", "role": ""}.
+    
+    **REQUIRED JSON FORMAT:**
+    {"first_name": "...", "last_name": "...", "role": "..."}
     `;
 
-    // 🎯 Use a retry loop for robust extraction
+    // Use a retry loop for robust JSON extraction
     for (let i = 0; i < 3; i++) { 
         try {
             const completion = await openai.chat.completions.create({
@@ -191,28 +179,21 @@ async function extractNameFromQuery(query, knowledge) {
             });
 
             const resultString = completion.choices[0]?.message?.content?.trim() || '';
+            
+            // Clean the string (remove markdown fences, etc.) and parse as JSON
+            const cleanString = resultString.replace(/```json|```/g, '').trim();
+            const result = JSON.parse(cleanString);
 
-            // Parsing the simple comma-separated string
-            if (resultString) {
-                const parts = resultString.split(',');
-                if (parts.length === 2) {
-                    const first = parts[0].trim().toLowerCase();
-                    const last = parts[1].trim().toLowerCase();
-                    
-                    // Basic validation to ensure a name was actually extracted
-                    if (first.length > 1 && last.length > 1 && !first.includes('name') && !last.includes('title')) {
-                        console.log(`✅ Name found on attempt ${i + 1}: ${first}, ${last}`);
-                        return [first, last]; // Success!
-                    }
-                }
+            // Validation: Check for required keys and non-empty values
+            if (result && result.first_name && result.last_name) {
+                return result; // Success: returns {first_name, last_name, role}
             }
-            console.warn(`⚠️ Attempt ${i + 1} failed to extract valid name. Retrying...`);
         } catch (err) {
-            console.error(`⚠️ LLM Name Extraction attempt ${i + 1} failed:`, err.message);
+            console.error(`⚠️ LLM Extraction attempt ${i + 1} failed:`, err.message);
         }
     }
     
-    return null; // Return null only after all retries fail
+    return {first_name: "", last_name: "", role: ""}; // Return empty object on total failure
 }
 
 
@@ -221,19 +202,53 @@ app.post("/chat", async (req, res) => {
     const userMessages = req.body.messages || [];
     let lastUserMessage = userMessages[userMessages.length - 1]?.content || ""; 
 
-    // 📧 Email shortcut logic
-    if (/(email|contact)/i.test(lastUserMessage)) {
+    // 📧 Email shortcut logic - Trigger on 'email', 'contact', or a pronoun + 'email'/'contact'
+    if (/(email|contact)/i.test(lastUserMessage) || /(her|his|their)\s*(email|contact|contact)/i.test(lastUserMessage)) {
       
-      // 1. Strip possessive forms and courtesy titles for a cleaner search query
-      const cleanedMessage = lastUserMessage
+      let extractionQuery = lastUserMessage;
+      
+      // *** CONTEXTUAL RESOLUTION FIX ***
+      const isPronounQuery = /(her|his|their)/i.test(lastUserMessage);
+      
+      if (isPronounQuery && userMessages.length >= 2) {
+          const previousAssistantReply = userMessages[userMessages.length - 2]?.content;
+
+          // Use a simple LLM call to extract the name from the previous reply
+          try {
+              const nameFinder = await openai.chat.completions.create({
+                  model: "gpt-4o-mini",
+                  messages: [{
+                      role: "user",
+                      content: `Analyze the following text and extract only the full first and last name of the person mentioned. Return the name as a string (e.g., "Theresa Monro"), or an empty string if no clear name is found. Text: "${previousAssistantReply}"`
+                  }],
+                  temperature: 0.0
+              });
+
+              const resolvedName = nameFinder.choices[0]?.message?.content?.trim();
+              
+              if (resolvedName && resolvedName.length > 3) {
+                  // Reconstruct the query: e.g., "what is her email" becomes "what is Theresa Monro's email"
+                  extractionQuery = `what is ${resolvedName}'s email`;
+                  console.log(`💡 Context resolved. New extraction query: ${extractionQuery}`);
+              }
+          } catch (e) {
+              console.warn("⚠️ Failed to resolve pronoun context via LLM:", e.message);
+              // Fallback to original message if LLM fails
+          }
+      }
+      // *** END CONTEXTUAL RESOLUTION FIX ***
+      
+      // 1. Clean the message to remove noise like possessives and titles
+      const cleanedMessage = extractionQuery
         .replace(/'s|s'/gi, '')
         .replace(/(mrs|mr|dr|ms)\.?\s*/gi, '');
       
-      // 2. Use the robust LLM function for contextual name/role extraction
+      // 2. Use the robust JSON extraction function
       const nameExtractionResult = await extractNameFromQuery(cleanedMessage, fcaKnowledge);
       
-      let first = nameExtractionResult ? nameExtractionResult[0] : null;
-      let last = nameExtractionResult ? nameExtractionResult[1] : null;
+      let first = nameExtractionResult.first_name;
+      let last = nameExtractionResult.last_name;
+      let role = nameExtractionResult.role; 
 
       // Check if the LLM successfully extracted the name
       if (first && last) {
@@ -243,13 +258,12 @@ app.post("/chat", async (req, res) => {
         const email = `${first}.${last}@${EMAIL_DOMAIN}`;
         
         let whoIsAnswer = "";
-        
-        // Heuristic to try and determine the role for a better response
-        const lowerMessage = cleanedMessage.toLowerCase();
-        let foundRole = ROLE_KEYWORDS.find(role => lowerMessage.includes(role));
 
-        if (foundRole) {
-            whoIsAnswer = `The email for the **${capitalize(foundRole)}** (${displayName}) is: **${email}**.`;
+        // Use the role extracted by the LLM for a perfect response
+        if (role) {
+            // Capitalize the role for a professional response
+            const displayRole = capitalize(role);
+            whoIsAnswer = `The email for the **${displayRole}** (${displayName}) is: **${email}**.`;
         } else {
             // Simple response for direct name queries
             whoIsAnswer = `The email address for **${displayName}** is: **${email}**.`;
@@ -305,4 +319,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () =>
   console.log(`✅ FCA Assistant running on port ${port}`)
 );
-
