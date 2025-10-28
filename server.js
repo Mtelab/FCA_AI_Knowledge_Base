@@ -14,9 +14,9 @@ dotenv.config();
 const app = express();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 
-// 🎯 FIX: Removed stray space from import.meta.url)
+// Fix: Correctly define __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
-const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "faithchristianacademy.net"; // Use configurable domain
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || "defaultdomain.net"; // Configurable domain
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -211,7 +211,11 @@ async function findNameByRoleViaLLM(role) {
 app.post("/chat", async (req, res) => {
   try {
     const userMessages = req.body.messages || [];
-    const lastUserMessage = userMessages[userMessages.length - 1]?.content || "";
+    let lastUserMessage = userMessages[userMessages.length - 1]?.content || ""; // Changed to 'let'
+
+    // 🎯 NEW FIX: Strip possessive forms before processing the message
+    // Replaces 's or s' with an empty string, ensuring Baker's becomes Baker
+    lastUserMessage = lastUserMessage.replace(/'s|s'/gi, '');
     
     // 📧 Email shortcut logic
     if (/(email|contact)/i.test(lastUserMessage)) {
@@ -220,31 +224,32 @@ app.post("/chat", async (req, res) => {
       let foundRole = null; 
       let nameByRole = null;
 
-      // 🛑 Step 1: Detect Role and attempt lookup
-      if (/(who is|who's|his|her)/i.test(lastUserMessage)) {
-          const lowerMessage = lastUserMessage.toLowerCase();
-          
+      // 🛑 Step 1: Detect Role
+      const lowerMessage = lastUserMessage.toLowerCase();
+      if (/(who is|who's|his|her)/i.test(lowerMessage)) {
           for (const role of ROLE_KEYWORDS) {
               if (lowerMessage.includes(role)) {
                   foundRole = role;
                   break; 
               }
           }
-          
-          // 🛑 Step 2: Pass the found role to the LLM for extraction and dynamic substitution
-          if (foundRole) {
-              nameByRole = await findNameByRoleViaLLM(foundRole); 
-              if (nameByRole) {
-                  [first, last] = nameByRole; 
-              }
+      }
+      
+      // 🛑 Step 2: Role Lookup (Only executed if a role was detected)
+      if (foundRole) {
+          nameByRole = await findNameByRoleViaLLM(foundRole); 
+          if (nameByRole) {
+              [first, last] = nameByRole; 
           }
       }
 
-      // 🛑 Step 3: Direct Name Extraction if role lookup failed (e.g., "Jeffrey Bakers email")
-      if (!nameByRole || (first === "" && last === "")) {
+      // 🛑 Step 3: Direct Name Extraction (Only executed if Step 2 FAILED or was SKIPPED)
+      // If foundRole is null (no role query), we try direct name lookup.
+      // If nameByRole is null (role lookup failed), we try direct name lookup.
+      if (!nameByRole && !foundRole) {
         
-        // Use LLM to extract the name directly from the query
-        const directNamePrompt = `Extract the first name and last name from the following user query. The query may contain possessive forms (e.g., "Jeffrey Bakers"). The names must be in lowercase. Respond ONLY with a JSON object. If no full name is clearly present, respond with the empty structure.
+        // Use LLM to extract the name directly from the cleaned query
+        const directNamePrompt = `Extract the first name and last name from the following user query. The names must be in lowercase. Respond ONLY with a JSON object. If no full name is clearly present, respond with the empty structure.
         
         User Query: "${lastUserMessage}"
         `;
@@ -270,7 +275,7 @@ app.post("/chat", async (req, res) => {
         }
       }
       
-      // Step 4: Final output with name and email
+      // Step 4: Final output with name and email (Execution only if first AND last are set)
       if (first && last) {
         // Construct display name 
         const displayName = `${capitalize(first)} ${capitalize(last)}`;
@@ -282,6 +287,7 @@ app.post("/chat", async (req, res) => {
         
         // Use a generic description if the name was directly asked for
         if (foundRole) {
+            // Note: foundRole is still the original term (e.g., "principal"), not the resolved title.
             whoIsAnswer = `Based on the documents, the email for the ${capitalize(foundRole)} is: **${email}**. The person is ${displayName}.`;
         } else {
             // Simple response for direct name queries (e.g., Jeffrey Baker)
